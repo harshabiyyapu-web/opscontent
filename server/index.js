@@ -179,17 +179,9 @@ const PlausibleService = {
         const now = new Date();
         const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
 
-        // Format for IST timezone - Plausible expects site's reporting timezone
+        // Use ISO format - Plausible API accepts ISO 8601 format
         const formatDateTime = (date) => {
-            // Format: YYYY-MM-DDTHH:MM:SS+05:30
-            const pad = (n) => n.toString().padStart(2, '0');
-            const year = date.getFullYear();
-            const month = pad(date.getMonth() + 1);
-            const day = pad(date.getDate());
-            const hours = pad(date.getHours());
-            const minutes = pad(date.getMinutes());
-            const seconds = pad(date.getSeconds());
-            return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+05:30`;
+            return date.toISOString();
         };
 
         // Get REALTIME data (last 5 minutes) - matches Plausible "current visitors" for the page
