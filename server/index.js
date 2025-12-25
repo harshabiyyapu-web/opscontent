@@ -867,6 +867,7 @@ app.post('/api/domains/:id/urls/:urlId/promote', async (req, res) => {
 // Get analytics for domain's tracked URLs
 app.get('/api/domains/:id/analytics', async (req, res) => {
     const domainId = req.params.id;
+    const forceRefresh = req.query.force === 'true';
     const apiKey = store.settings.plausibleApiKey;
 
     if (!store.urls[domainId]) {
@@ -907,14 +908,22 @@ app.get('/api/domains/:id/analytics', async (req, res) => {
         }
     });
 
+    // If force refresh, clear cache for all tracked URLs
+    if (forceRefresh) {
+        trackedUrls.forEach(url => delete store.analyticsCache[url.id]);
+        console.log(`🔄 Force refreshing analytics for ${trackedUrls.length} tracked URLs`);
+    }
+
     const analyticsResults = {};
 
     for (const url of trackedUrls) {
-        // Check cache first
-        const cached = getCachedAnalytics(url.id);
-        if (cached) {
-            analyticsResults[url.id] = cached;
-            continue;
+        // Check cache first (skip if force refresh)
+        if (!forceRefresh) {
+            const cached = getCachedAnalytics(url.id);
+            if (cached) {
+                analyticsResults[url.id] = cached;
+                continue;
+            }
         }
 
         // Fetch fresh data

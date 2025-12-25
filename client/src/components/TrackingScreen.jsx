@@ -7,11 +7,14 @@ function TrackingScreen({ domainId, session, selectedDate }) {
     const [analytics, setAnalytics] = useState({});
     const [loading, setLoading] = useState(false);
 
-    // Fetch analytics
-    const fetchAnalytics = useCallback(async () => {
+    // Fetch analytics with force refresh option
+    const fetchAnalytics = useCallback(async (forceRefresh = false) => {
         setLoading(true);
         try {
-            const response = await fetch(`/api/domains/${domainId}/analytics`);
+            const url = forceRefresh
+                ? `/api/domains/${domainId}/analytics?force=true&t=${Date.now()}`
+                : `/api/domains/${domainId}/analytics`;
+            const response = await fetch(url);
             if (response.ok) {
                 const data = await response.json();
                 setAnalytics(data.analytics || {});
@@ -27,6 +30,9 @@ function TrackingScreen({ domainId, session, selectedDate }) {
         const trackedArticles = session.articles.filter(a => a.isTracking);
         if (trackedArticles.length > 0) {
             fetchAnalytics();
+            // Auto-refresh every 30 seconds
+            const interval = setInterval(() => fetchAnalytics(true), 30000);
+            return () => clearInterval(interval);
         }
     }, [session, fetchAnalytics]);
 
@@ -69,10 +75,10 @@ function TrackingScreen({ domainId, session, selectedDate }) {
                     </select>
                     <button
                         className="btn btn-primary btn-sm"
-                        onClick={fetchAnalytics}
+                        onClick={() => fetchAnalytics(true)}
                         disabled={loading}
                     >
-                        {loading ? 'Refreshing...' : 'Refresh'}
+                        {loading ? 'Refreshing...' : '🔄 Refresh'}
                     </button>
                 </div>
             </div>
