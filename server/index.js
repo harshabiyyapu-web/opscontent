@@ -1036,6 +1036,43 @@ app.get('/api/settings', (req, res) => {
     });
 });
 
+// Debug endpoint to check Plausible API configuration
+app.get('/api/debug/plausible', async (req, res) => {
+    const apiKey = store.settings.plausibleApiKey;
+    const result = {
+        hasApiKey: !!apiKey,
+        apiKeyPreview: apiKey ? `${apiKey.slice(0, 10)}...${apiKey.slice(-5)}` : 'NOT SET',
+        plausibleBaseUrl: config.plausibleBaseUrl,
+        domainsCount: store.domains.length,
+        testConnection: null
+    };
+
+    // Test the Plausible API connection
+    if (apiKey && store.domains.length > 0) {
+        try {
+            const domain = store.domains[0];
+            const siteId = getSiteIdFromUrl(domain.url);
+            const response = await fetch(`${config.plausibleBaseUrl}/api/v1/stats/realtime/visitors?site_id=${siteId}`, {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`
+                }
+            });
+
+            if (response.ok) {
+                const visitors = await response.json();
+                result.testConnection = { success: true, realtimeVisitors: visitors, siteId };
+            } else {
+                const error = await response.text();
+                result.testConnection = { success: false, status: response.status, error };
+            }
+        } catch (error) {
+            result.testConnection = { success: false, error: error.message };
+        }
+    }
+
+    res.json(result);
+});
+
 // Update settings
 app.post('/api/settings', (req, res) => {
     const { plausibleApiKey } = req.body;
