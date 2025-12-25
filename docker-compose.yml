@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: opscontent-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PLAUSIBLE_API_KEY=${PLAUSIBLE_API_KEY}
+    networks:
+      - opscontent-network
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: opscontent-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - opscontent-network
+
+networks:
+  opscontent-network:
+    driver: bridge
