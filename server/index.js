@@ -1073,6 +1073,44 @@ app.get('/api/debug/plausible', async (req, res) => {
     res.json(result);
 });
 
+// Debug endpoint to check tracked articles
+app.get('/api/debug/articles', (req, res) => {
+    const result = {
+        domainsCount: store.domains.length,
+        domains: store.domains.map(d => ({
+            id: d.id,
+            name: d.name,
+            url: d.url
+        })),
+        sessionsCount: Object.keys(store.sessions).length,
+        sessions: Object.entries(store.sessions).map(([key, session]) => ({
+            key,
+            date: session.date,
+            articlesCount: session.articles.length,
+            trackedArticles: session.articles.filter(a => a.isTracking).map(a => ({
+                id: a.id,
+                url: a.url,
+                title: a.title?.slice(0, 50),
+                isTracking: a.isTracking,
+                focusGroupId: a.focusGroupId
+            }))
+        })),
+        legacyUrls: Object.entries(store.urls).map(([domainId, urls]) => ({
+            domainId,
+            urlsCount: urls.length,
+            trackedUrls: urls.filter(u => u.isTracking).map(u => ({
+                id: u.id,
+                url: u.url,
+                label: u.label?.slice(0, 50),
+                isTracking: u.isTracking
+            }))
+        })),
+        analyticsCache: Object.keys(store.analyticsCache).length
+    };
+
+    res.json(result);
+});
+
 // Update settings
 app.post('/api/settings', (req, res) => {
     const { plausibleApiKey } = req.body;
