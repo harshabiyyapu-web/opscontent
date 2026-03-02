@@ -254,12 +254,56 @@ const PlausibleService = {
         const totalMetrics = parseMetrics(todayData.results?.[0], ['visitors', 'pageviews', 'bounce_rate', 'visit_duration']);
         const totals = totalMetrics || { visitors: 0, pageviews: 0, bounce_rate: 0, visit_duration: 0 };
 
+        // Get source breakdown (today)
+        let sources = [];
+        try {
+            const sourceData = await this.getSourceBreakdown(apiKey, siteId, pagePath);
+            sources = sourceData;
+        } catch (e) {
+            console.error('Failed to fetch source breakdown:', e.message);
+        }
+
         return {
             realtime,           // Live visitors (last 5 min)
             hourlyData,         // Trend chart data (last 30 min)
             totals,             // Today's totals
+            sources,            // Traffic source breakdown
             previousPeriod: { visitors: totals.visitors, pageviews: totals.pageviews }  // For comparison
         };
+    },
+
+    // Get traffic source breakdown for a specific page
+    async getSourceBreakdown(apiKey, siteId, pagePath) {
+        const sourceData = await this.query(apiKey, siteId, {
+            metrics: ['visitors', 'pageviews'],
+            date_range: 'day',
+            dimensions: ['visit:source'],
+            filters: [['is', 'event:page', [pagePath]]]
+        });
+
+        return (sourceData.results || []).map(r => ({
+            source: r.dimensions?.[0] || 'Direct / None',
+            visitors: r.metrics?.[0] || 0,
+            pageviews: r.metrics?.[1] || 0
+        })).sort((a, b) => b.visitors - a.visitors);
+    },
+
+    // Get realtime source breakdown (last 5 minutes)
+    async getRealtimeSourceBreakdown(apiKey, siteId, pagePath) {
+        const now = new Date();
+        const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+        const sourceData = await this.query(apiKey, siteId, {
+            metrics: ['visitors'],
+            date_range: [fiveMinAgo.toISOString(), now.toISOString()],
+            dimensions: ['visit:source'],
+            filters: [['is', 'event:page', [pagePath]]]
+        });
+
+        return (sourceData.results || []).map(r => ({
+            source: r.dimensions?.[0] || 'Direct / None',
+            visitors: r.metrics?.[0] || 0
+        })).sort((a, b) => b.visitors - a.visitors);
     },
 
     calculatePercentageChange(current, previous) {

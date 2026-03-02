@@ -371,6 +371,7 @@ function DomainView({ activeTab, setActiveTab }) {
                                         const hourlyData = a.hourlyData || []
                                         const maxVal = Math.max(...hourlyData.map(d => d.visitors || 0), 1)
                                         const snapshots = article.trafficSnapshots || []
+                                        const sources = a.sources || []
 
                                         return (
                                             <div key={article.id} className="analytics-article-card">
@@ -447,6 +448,32 @@ function DomainView({ activeTab, setActiveTab }) {
                                                         <span className="analytics-metric-lbl">Avg Time</span>
                                                     </div>
                                                 </div>
+
+                                                {/* Traffic Sources */}
+                                                {sources.length > 0 && (
+                                                    <div className="analytics-sources-section">
+                                                        <div className="analytics-sources-label">📡 Traffic Sources</div>
+                                                        <div className="analytics-sources-list">
+                                                            {sources.slice(0, 6).map((src, idx) => {
+                                                                const maxSrcVisitors = sources[0]?.visitors || 1
+                                                                const barPercent = Math.max(5, (src.visitors / maxSrcVisitors) * 100)
+                                                                const sourceColors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899']
+                                                                return (
+                                                                    <div key={idx} className="source-bar-row">
+                                                                        <span className="source-bar-name">{src.source}</span>
+                                                                        <div className="source-bar-track">
+                                                                            <div
+                                                                                className="source-bar-fill"
+                                                                                style={{ width: `${barPercent}%`, backgroundColor: sourceColors[idx % sourceColors.length] }}
+                                                                            ></div>
+                                                                        </div>
+                                                                        <span className="source-bar-count">{src.visitors}</span>
+                                                                    </div>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                                 {/* Timestamp Button + Saved Snapshots */}
                                                 <div className="analytics-snapshot-section">
