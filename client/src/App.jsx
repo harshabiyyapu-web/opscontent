@@ -4,9 +4,17 @@ import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import DomainView from './pages/DomainView'
 import BlueprintPage from './pages/BlueprintPage'
+import LoginPage from './pages/LoginPage'
 
 function App() {
     const [activeTab, setActiveTab] = useState('articles')
+    const [isAuthenticated, setIsAuthenticated] = useState(() => {
+        return localStorage.getItem('ops_auth') === 'true'
+    })
+
+    if (!isAuthenticated) {
+        return <LoginPage onLogin={() => setIsAuthenticated(true)} />
+    }
 
     return (
         <div className="app-layout">
