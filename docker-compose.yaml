@@ -12,6 +12,8 @@ services:
     environment:
       - NODE_ENV=production
       - PLAUSIBLE_API_KEY=${PLAUSIBLE_API_KEY:-}
+    volumes:
+      - opscontent-data:/app/data
     networks:
       - opscontent-network
 
@@ -31,3 +33,6 @@ services:
 networks:
   opscontent-network:
     driver: bridge
+
+volumes:
+  opscontent-data:

@@ -2,6 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
 import cron from 'node-cron';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3001;
@@ -9,6 +15,23 @@ const PORT = 3001;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Auto-save middleware: trigger saveData() after any mutation (POST/PATCH/PUT/DELETE)
+app.use((req, res, next) => {
+    if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) {
+        const originalJson = res.json.bind(res);
+        const originalSend = res.send.bind(res);
+        res.json = function (data) {
+            if (res.statusCode < 400 && typeof saveData === 'function') saveData();
+            return originalJson(data);
+        };
+        res.send = function (data) {
+            if (res.statusCode < 400 && typeof saveData === 'function') saveData();
+            return originalSend(data);
+        };
+    }
+    next();
+});
 
 // ============ CONFIGURATION ============
 const config = {
@@ -91,17 +114,61 @@ async function checkGoogleIndex(pageUrl) {
     }
 }
 
-// ============ IN-MEMORY DATA STORE ============
+// ============ PERSISTENT DATA STORE ============
+const DATA_DIR = path.join(__dirname, 'data');
+const DATA_FILE = path.join(DATA_DIR, 'store.json');
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// Load persisted data from disk
+function loadData() {
+    try {
+        if (fs.existsSync(DATA_FILE)) {
+            const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+            const saved = JSON.parse(raw);
+            console.log(`✅ Loaded data from ${DATA_FILE} (${Object.keys(saved.sessions || {}).length} sessions, ${(saved.domains || []).length} domains)`);
+            return saved;
+        }
+    } catch (err) {
+        console.error('⚠️ Failed to load data file, starting fresh:', err.message);
+    }
+    return null;
+}
+
+// Save data to disk (debounced to avoid excessive writes)
+let saveTimeout = null;
+function saveData() {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+        try {
+            const toSave = {
+                domains: store.domains,
+                urls: store.urls,
+                sessions: store.sessions,
+                blueprint: store.blueprint,
+                settings: { plausibleApiKey: store.settings.plausibleApiKey }
+            };
+            fs.writeFileSync(DATA_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
+            console.log(`💾 Data saved (${(toSave.domains || []).length} domains, ${Object.keys(toSave.sessions || {}).length} sessions)`);
+        } catch (err) {
+            console.error('❌ Failed to save data:', err.message);
+        }
+    }, 500); // Debounce 500ms
+}
+
+// Initialize store with saved data or defaults
+const savedData = loadData();
 const store = {
-    domains: [],
-    urls: {}, // { domainId: [urls] } - legacy, keeping for compatibility
-    sessions: {}, // { "domainId_YYYY-MM-DD": { date, articles[], focusGroups[] } }
-    analyticsCache: {}, // { urlId: { data, timestamp } }
-    blueprint: {
-        countries: [] // { id, name, articles: [{ id, url, title, image }] }
-    },
+    domains: savedData?.domains || [],
+    urls: savedData?.urls || {},
+    sessions: savedData?.sessions || {},
+    analyticsCache: {}, // Transient — not persisted
+    blueprint: savedData?.blueprint || { countries: [] },
     settings: {
-        plausibleApiKey: config.plausibleApiKey
+        plausibleApiKey: config.plausibleApiKey || savedData?.settings?.plausibleApiKey || ''
     }
 };
 
