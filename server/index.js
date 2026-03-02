@@ -254,10 +254,10 @@ const PlausibleService = {
         const totalMetrics = parseMetrics(todayData.results?.[0], ['visitors', 'pageviews', 'bounce_rate', 'visit_duration']);
         const totals = totalMetrics || { visitors: 0, pageviews: 0, bounce_rate: 0, visit_duration: 0 };
 
-        // Get source breakdown (today)
+        // Get realtime source breakdown (last 5 minutes)
         let sources = [];
         try {
-            const sourceData = await this.getSourceBreakdown(apiKey, siteId, pagePath);
+            const sourceData = await this.getRealtimeSourceBreakdown(apiKey, siteId, pagePath);
             sources = sourceData;
         } catch (e) {
             console.error('Failed to fetch source breakdown:', e.message);
