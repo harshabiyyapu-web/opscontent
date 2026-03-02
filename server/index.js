@@ -973,6 +973,72 @@ app.get('/api/domains/:id/analytics-groups', async (req, res) => {
     res.json(countryData);
 });
 
+// Get comprehensive article detail (timeline, traffic, push, snapshots)
+app.get('/api/domains/:id/session/article-detail/:aid', async (req, res) => {
+    const { id: domainId, aid } = req.params;
+    const { date } = req.query;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+
+    // Find the article across all content groups
+    let foundArticle = null;
+    let foundGroup = null;
+    for (const group of session.contentGroups) {
+        const art = group.articles.find(a => a.id === aid);
+        if (art) {
+            foundArticle = art;
+            foundGroup = group;
+            break;
+        }
+    }
+
+    if (!foundArticle) return res.status(404).json({ error: 'Article not found' });
+
+    // Find redirection info
+    let redirectionStarted = null, redirectionStopped = null, redirectionDuration = null;
+    for (const redir of session.redirectionSets || []) {
+        if (redir.redirectedArticleIds.includes(aid)) {
+            redirectionStarted = redir.startTime || null;
+            redirectionStopped = redir.stopTime || null;
+            redirectionDuration = redir.duration || null;
+            break;
+        }
+    }
+
+    // Fetch Plausible traffic if API key available
+    let todayVisitors = 0, todayPageviews = 0, realtimeVisitors = 0;
+    const apiKey = store.settings.plausibleApiKey;
+    if (apiKey) {
+        const domain = store.domains.find(d => d.id === domainId);
+        if (domain) {
+            const siteId = getSiteIdFromUrl(domain.url);
+            try {
+                const analytics = await PlausibleService.getUrlAnalytics(apiKey, siteId, foundArticle.url);
+                todayVisitors = analytics.totals?.visitors || 0;
+                todayPageviews = analytics.totals?.pageviews || 0;
+                realtimeVisitors = analytics.realtime?.visitors || 0;
+            } catch (e) { /* skip */ }
+        }
+    }
+
+    res.json({
+        id: foundArticle.id,
+        title: foundArticle.title,
+        url: foundArticle.url,
+        image: foundArticle.image,
+        country: foundGroup.country,
+        countryFlag: foundGroup.countryFlag,
+        addedAt: foundArticle.addedAt || foundArticle.createdAt || null,
+        redirectionStarted,
+        redirectionStopped,
+        redirectionDuration,
+        todayVisitors,
+        todayPageviews,
+        realtimeVisitors,
+        pushStatus: foundArticle.pushStatus || { given: false, pushPassed: false },
+        snapshots: foundArticle.trafficSnapshots || []
+    });
+});
+
 // Force refresh analytics for a specific article
 app.get('/api/domains/:id/analytics-article/:aid', async (req, res) => {
     const { id: domainId, aid } = req.params;

@@ -4,6 +4,7 @@ import Modal from '../components/Modal'
 import ContentGroupCard, { PRESET_COUNTRIES } from '../components/ContentGroupCard'
 import RedirectionCard from '../components/RedirectionCard'
 import ApluPushModal from '../components/ApluPushModal'
+import ArticleDetailModal from '../components/ArticleDetailModal'
 import DateSelector from '../components/DateSelector'
 import TabNavigation from '../components/TabNavigation'
 import BasicSetup from '../components/BasicSetup'
@@ -37,6 +38,8 @@ function DomainView({ activeTab, setActiveTab }) {
     const [analyticsPushModal, setAnalyticsPushModal] = useState(false)
     const [analyticsPushTarget, setAnalyticsPushTarget] = useState(null)
     const [pushDetailOpen, setPushDetailOpen] = useState(null)
+    const [articleSearchQuery, setArticleSearchQuery] = useState('')
+    const [articleDetailOpen, setArticleDetailOpen] = useState(null) // article object
 
     // Fetch session
     const fetchSession = useCallback(async () => {
@@ -363,7 +366,16 @@ function DomainView({ activeTab, setActiveTab }) {
                 <>
                     <div className="content-section">
                         <div className="content-section-header">
-                            <h2 className="content-section-title">📊 Analytics (Country-wise)</h2>
+                            <h2 className="content-section-title">📊 Analytics</h2>
+                            <div className="analytics-search-bar">
+                                <input
+                                    type="text"
+                                    className="search-input"
+                                    placeholder="🔍 Search articles..."
+                                    value={articleSearchQuery}
+                                    onChange={e => setArticleSearchQuery(e.target.value)}
+                                />
+                            </div>
                         </div>
 
                         {(session.contentGroups || []).length === 0 ? (
@@ -373,162 +385,182 @@ function DomainView({ activeTab, setActiveTab }) {
                                 <p className="empty-state-text">Add content groups first to see analytics.</p>
                             </div>
                         ) : (
-                            (analyticsData || []).map(group => (
-                                <div key={group.groupId} className="analytics-country-section">
-                                    <div className="analytics-country-header">
-                                        <span className="country-flag-large">{group.countryFlag}</span>
-                                        <h3>{group.country}</h3>
-                                        <span className="content-group-count">{group.articles.length} articles</span>
-                                        <button className="btn btn-primary btn-sm" onClick={fetchAnalytics} style={{ marginLeft: 'auto' }} disabled={analyticsLoading}>
-                                            {analyticsLoading ? '⏳' : '🔄'} Refresh
-                                        </button>
-                                    </div>
+                            (analyticsData || []).map(group => {
+                                const filteredArticles = articleSearchQuery
+                                    ? group.articles.filter(a =>
+                                        (a.title || a.url || '').toLowerCase().includes(articleSearchQuery.toLowerCase())
+                                    )
+                                    : group.articles
+                                if (filteredArticles.length === 0 && articleSearchQuery) return null
+                                return (
+                                    <div key={group.groupId} className="analytics-country-section">
+                                        <div className="analytics-country-header">
+                                            <span className="country-flag-large">{group.countryFlag}</span>
+                                            <h3>{group.country}</h3>
+                                            <span className="content-group-count">{group.articles.length} articles</span>
+                                            <button className="btn btn-primary btn-sm" onClick={fetchAnalytics} style={{ marginLeft: 'auto' }} disabled={analyticsLoading}>
+                                                {analyticsLoading ? '⏳' : '🔄'} Refresh
+                                            </button>
+                                        </div>
 
-                                    <div className="analytics-articles-list">
-                                        {group.articles.map(article => {
-                                            const a = article.analytics || {}
-                                            const rt = a.realtime || {}
-                                            const totals = a.totals || {}
-                                            const hourlyData = a.hourlyData || []
-                                            const maxVal = Math.max(...hourlyData.map(d => d.visitors || 0), 1)
-                                            const snapshots = article.trafficSnapshots || []
-                                            const sources = a.sources || []
+                                        <div className="analytics-articles-list">
+                                            {filteredArticles.map(article => {
+                                                const a = article.analytics || {}
+                                                const rt = a.realtime || {}
+                                                const totals = a.totals || {}
+                                                const hourlyData = a.hourlyData || []
+                                                const maxVal = Math.max(...hourlyData.map(d => d.visitors || 0), 1)
+                                                const snapshots = article.trafficSnapshots || []
+                                                const sources = a.sources || []
 
-                                            return (
-                                                <div key={article.id} className="analytics-article-card">
-                                                    {/* Article Header with Image */}
-                                                    <div className="analytics-article-header">
-                                                        <div className="analytics-article-img-wrap">
-                                                            {article.image ? (
-                                                                <img src={article.image} alt="" className="analytics-article-img" onError={e => { e.target.style.display = 'none' }} />
-                                                            ) : (
-                                                                <div className="analytics-article-img-placeholder">📄</div>
-                                                            )}
-                                                        </div>
-                                                        <div className="analytics-article-info-col">
-                                                            <h4 className="analytics-article-title">{article.title}</h4>
-                                                            <a href={article.url} target="_blank" rel="noopener noreferrer" className="analytics-article-link">
-                                                                {(() => { try { return new URL(article.url).hostname + new URL(article.url).pathname.slice(0, 30) } catch { return article.url.slice(0, 50) } })()}
-                                                            </a>
-                                                            <div className="analytics-push-row">
-                                                                {article.pushStatus?.given ? (
-                                                                    <span
-                                                                        className="push-badge push-given-badge push-badge-clickable"
-                                                                        onClick={() => setPushDetailOpen(pushDetailOpen === article.id ? null : article.id)}
-                                                                    >
-                                                                        🔔 Push Given ▾
-                                                                    </span>
+                                                return (
+                                                    <div key={article.id} className="analytics-article-card">
+                                                        {/* Article Header with Image */}
+                                                        <div className="analytics-article-header">
+                                                            <div className="analytics-article-img-wrap">
+                                                                {article.image ? (
+                                                                    <img src={article.image} alt="" className="analytics-article-img" onError={e => { e.target.style.display = 'none' }} />
                                                                 ) : (
-                                                                    <button className="btn btn-push-sm" onClick={() => {
-                                                                        setAnalyticsPushTarget({ articleId: article.id, label: article.title })
-                                                                        setAnalyticsPushModal(true)
-                                                                    }}>
-                                                                        🔔 Push
-                                                                    </button>
+                                                                    <div className="analytics-article-img-placeholder">📄</div>
                                                                 )}
-                                                                {article.pushStatus?.pushPassed && <span className="push-badge push-passed-badge">✓ Passed</span>}
                                                             </div>
-                                                            {/* Push Detail Dropdown */}
-                                                            {pushDetailOpen === article.id && article.pushStatus?.given && (
-                                                                <div className="push-detail-dropdown">
-                                                                    <div className="push-detail-row"><span className="push-detail-label">Site:</span> <span>{article.pushStatus.siteName}</span></div>
-                                                                    <div className="push-detail-row"><span className="push-detail-label">Email:</span> <span>{article.pushStatus.email}</span></div>
-                                                                    <div className="push-detail-row"><span className="push-detail-label">Time:</span> <span>{article.pushStatus.time}</span></div>
-                                                                    <div className="push-detail-row"><span className="push-detail-label">Given:</span> <span>{new Date(article.pushStatus.givenAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span></div>
+                                                            <div className="analytics-article-info-col">
+                                                                <h4 className="analytics-article-title analytics-article-clickable" onClick={() => setArticleDetailOpen(article)}>
+                                                                    {article.title}
+                                                                </h4>
+                                                                <a href={article.url} target="_blank" rel="noopener noreferrer" className="analytics-article-link">
+                                                                    {(() => { try { return new URL(article.url).hostname + new URL(article.url).pathname.slice(0, 30) } catch { return article.url.slice(0, 50) } })()}
+                                                                </a>
+                                                                <div className="analytics-push-row">
+                                                                    {article.pushStatus?.given ? (
+                                                                        <span
+                                                                            className="push-badge push-given-badge push-badge-clickable"
+                                                                            onClick={() => setPushDetailOpen(pushDetailOpen === article.id ? null : article.id)}
+                                                                        >
+                                                                            🔔 Push Given ▾
+                                                                        </span>
+                                                                    ) : (
+                                                                        <button className="btn btn-push-sm" onClick={() => {
+                                                                            setAnalyticsPushTarget({ articleId: article.id, label: article.title })
+                                                                            setAnalyticsPushModal(true)
+                                                                        }}>
+                                                                            🔔 Push
+                                                                        </button>
+                                                                    )}
+                                                                    {article.pushStatus?.pushPassed && <span className="push-badge push-passed-badge">✓ Passed</span>}
                                                                 </div>
+                                                                {/* Push Detail Dropdown */}
+                                                                {pushDetailOpen === article.id && article.pushStatus?.given && (
+                                                                    <div className="push-detail-dropdown">
+                                                                        <div className="push-detail-row"><span className="push-detail-label">Site:</span> <span>{article.pushStatus.siteName}</span></div>
+                                                                        <div className="push-detail-row"><span className="push-detail-label">Email:</span> <span>{article.pushStatus.email}</span></div>
+                                                                        <div className="push-detail-row"><span className="push-detail-label">Time:</span> <span>{article.pushStatus.time}</span></div>
+                                                                        <div className="push-detail-row"><span className="push-detail-label">Given:</span> <span>{new Date(article.pushStatus.givenAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span></div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            {/* Realtime Visitors Big Number */}
+                                                            <div className="analytics-realtime-big">
+                                                                <div className="realtime-live-indicator">
+                                                                    <span className="live-dot-pulse"></span>
+                                                                    <span className="live-text">LIVE</span>
+                                                                </div>
+                                                                <div className="realtime-big-number">{rt.visitors || 0}</div>
+                                                                <div className="realtime-big-label">visitors now</div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Traffic Chart */}
+                                                        {hourlyData.length > 0 && (
+                                                            <div className="analytics-mini-chart">
+                                                                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="mini-chart-svg">
+                                                                    <defs>
+                                                                        <linearGradient id={`grad-${article.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                                                            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
+                                                                            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+                                                                        </linearGradient>
+                                                                    </defs>
+                                                                    <path
+                                                                        d={`M ${hourlyData.map((d, i) => `${(i / (hourlyData.length - 1 || 1)) * 100},${40 - ((d.visitors || 0) / maxVal) * 35}`).join(' L ')}`}
+                                                                        fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinejoin="round"
+                                                                    />
+                                                                    <path
+                                                                        d={`M 0,40 ${hourlyData.map((d, i) => `L ${(i / (hourlyData.length - 1 || 1)) * 100},${40 - ((d.visitors || 0) / maxVal) * 35}`).join(' ')} L 100,40 Z`}
+                                                                        fill={`url(#grad-${article.id})`}
+                                                                    />
+                                                                </svg>
+                                                                <div className="mini-chart-labels">
+                                                                    <span>24h ago</span>
+                                                                    <span>Now</span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Today's Totals */}
+                                                        <div className="analytics-totals-row">
+                                                            <div className="analytics-metric">
+                                                                <span className="analytics-metric-val">{totals.visitors || 0}</span>
+                                                                <span className="analytics-metric-lbl">Today</span>
+                                                            </div>
+                                                            <div className="analytics-metric">
+                                                                <span className="analytics-metric-val">{totals.pageviews || 0}</span>
+                                                                <span className="analytics-metric-lbl">Views</span>
+                                                            </div>
+                                                            <div className="analytics-metric">
+                                                                <span className="analytics-metric-val">{totals.bounce_rate ? `${Math.round(totals.bounce_rate)}%` : '0%'}</span>
+                                                                <span className="analytics-metric-lbl">Bounce</span>
+                                                            </div>
+                                                            <div className="analytics-metric">
+                                                                <span className="analytics-metric-val">{totals.visit_duration ? `${Math.floor(totals.visit_duration / 60)}m` : '0s'}</span>
+                                                                <span className="analytics-metric-lbl">Avg Time</span>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Realtime Traffic Sources (Last 5 min) */}
+                                                        {sources.length > 0 && (
+                                                            <div className="analytics-sources-section">
+                                                                <div className="analytics-sources-label">📡 Live Sources <span className="sources-live-tag">last 5 min</span></div>
+                                                                <div className="analytics-sources-list">
+                                                                    {sources.slice(0, 6).map((src, idx) => {
+                                                                        const maxSrcVisitors = sources[0]?.visitors || 1
+                                                                        const barPercent = Math.max(5, (src.visitors / maxSrcVisitors) * 100)
+                                                                        const sourceColors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899']
+                                                                        return (
+                                                                            <div key={idx} className="source-bar-row">
+                                                                                <span className="source-bar-name">{src.source}</span>
+                                                                                <div className="source-bar-track">
+                                                                                    <div
+                                                                                        className="source-bar-fill"
+                                                                                        style={{ width: `${barPercent}%`, backgroundColor: sourceColors[idx % sourceColors.length] }}
+                                                                                    ></div>
+                                                                                </div>
+                                                                                <span className="source-bar-count">{src.visitors}</span>
+                                                                            </div>
+                                                                        )
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Action Buttons — Snapshot + Push side by side */}
+                                                        <div className="analytics-action-row">
+                                                            <button
+                                                                className="btn btn-snapshot-compact"
+                                                                onClick={() => handleSaveSnapshot(group.groupId, article.id, rt.visitors || 0, totals.pageviews || 0)}
+                                                            >
+                                                                📸 Snapshot
+                                                            </button>
+                                                            {!article.pushStatus?.given && (
+                                                                <button className="btn btn-push-compact" onClick={() => {
+                                                                    setAnalyticsPushTarget({ articleId: article.id, label: article.title })
+                                                                    setAnalyticsPushModal(true)
+                                                                }}>
+                                                                    🔔 Push
+                                                                </button>
                                                             )}
                                                         </div>
-                                                        {/* Realtime Visitors Big Number */}
-                                                        <div className="analytics-realtime-big">
-                                                            <div className="realtime-live-indicator">
-                                                                <span className="live-dot-pulse"></span>
-                                                                <span className="live-text">LIVE</span>
-                                                            </div>
-                                                            <div className="realtime-big-number">{rt.visitors || 0}</div>
-                                                            <div className="realtime-big-label">visitors now</div>
-                                                        </div>
-                                                    </div>
 
-                                                    {/* Traffic Chart */}
-                                                    {hourlyData.length > 0 && (
-                                                        <div className="analytics-mini-chart">
-                                                            <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="mini-chart-svg">
-                                                                <defs>
-                                                                    <linearGradient id={`grad-${article.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                                                                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
-                                                                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
-                                                                    </linearGradient>
-                                                                </defs>
-                                                                <path
-                                                                    d={`M ${hourlyData.map((d, i) => `${(i / (hourlyData.length - 1 || 1)) * 100},${40 - ((d.visitors || 0) / maxVal) * 35}`).join(' L ')}`}
-                                                                    fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinejoin="round"
-                                                                />
-                                                                <path
-                                                                    d={`M 0,40 ${hourlyData.map((d, i) => `L ${(i / (hourlyData.length - 1 || 1)) * 100},${40 - ((d.visitors || 0) / maxVal) * 35}`).join(' ')} L 100,40 Z`}
-                                                                    fill={`url(#grad-${article.id})`}
-                                                                />
-                                                            </svg>
-                                                            <div className="mini-chart-labels">
-                                                                <span>24h ago</span>
-                                                                <span>Now</span>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Today's Totals */}
-                                                    <div className="analytics-totals-row">
-                                                        <div className="analytics-metric">
-                                                            <span className="analytics-metric-val">{totals.visitors || 0}</span>
-                                                            <span className="analytics-metric-lbl">Today</span>
-                                                        </div>
-                                                        <div className="analytics-metric">
-                                                            <span className="analytics-metric-val">{totals.pageviews || 0}</span>
-                                                            <span className="analytics-metric-lbl">Views</span>
-                                                        </div>
-                                                        <div className="analytics-metric">
-                                                            <span className="analytics-metric-val">{totals.bounce_rate ? `${Math.round(totals.bounce_rate)}%` : '0%'}</span>
-                                                            <span className="analytics-metric-lbl">Bounce</span>
-                                                        </div>
-                                                        <div className="analytics-metric">
-                                                            <span className="analytics-metric-val">{totals.visit_duration ? `${Math.floor(totals.visit_duration / 60)}m` : '0s'}</span>
-                                                            <span className="analytics-metric-lbl">Avg Time</span>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Realtime Traffic Sources (Last 5 min) */}
-                                                    {sources.length > 0 && (
-                                                        <div className="analytics-sources-section">
-                                                            <div className="analytics-sources-label">📡 Live Sources <span className="sources-live-tag">last 5 min</span></div>
-                                                            <div className="analytics-sources-list">
-                                                                {sources.slice(0, 6).map((src, idx) => {
-                                                                    const maxSrcVisitors = sources[0]?.visitors || 1
-                                                                    const barPercent = Math.max(5, (src.visitors / maxSrcVisitors) * 100)
-                                                                    const sourceColors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899']
-                                                                    return (
-                                                                        <div key={idx} className="source-bar-row">
-                                                                            <span className="source-bar-name">{src.source}</span>
-                                                                            <div className="source-bar-track">
-                                                                                <div
-                                                                                    className="source-bar-fill"
-                                                                                    style={{ width: `${barPercent}%`, backgroundColor: sourceColors[idx % sourceColors.length] }}
-                                                                                ></div>
-                                                                            </div>
-                                                                            <span className="source-bar-count">{src.visitors}</span>
-                                                                        </div>
-                                                                    )
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Timestamp Button + Saved Snapshots */}
-                                                    <div className="analytics-snapshot-section">
-                                                        <button
-                                                            className="btn btn-snapshot"
-                                                            onClick={() => handleSaveSnapshot(group.groupId, article.id, rt.visitors || 0, totals.pageviews || 0)}
-                                                        >
-                                                            📸 Snapshot — <strong>{rt.visitors || 0}</strong> live · <strong>{totals.pageviews || 0}</strong> views today
-                                                        </button>
+                                                        {/* Saved Snapshots */}
                                                         {snapshots.length > 0 && (
                                                             <div className="snapshot-list">
                                                                 {snapshots.map(snap => (
@@ -540,60 +572,60 @@ function DomainView({ activeTab, setActiveTab }) {
                                                                 ))}
                                                             </div>
                                                         )}
-                                                    </div>
 
-                                                    {a.lastUpdated && (
-                                                        <div className="analytics-updated">
-                                                            Updated: {new Date(a.lastUpdated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-
-                                    {/* Redirection Summary below articles */}
-                                    {(group.redirectionSets || []).length > 0 && (
-                                        <div className="analytics-redir-summary">
-                                            {group.redirectionSets.map(redir => (
-                                                <div key={redir.id} className="analytics-redir-card">
-                                                    <div className="analytics-redir-name">
-                                                        <span className={`redir-status-dot ${redir.toggleOn ? 'dot-green' : 'dot-red'}`}></span>
-                                                        {redir.name}
-                                                        {redir.duration && <span className="analytics-duration">⏱ {redir.duration}</span>}
+                                                        {a.lastUpdated && (
+                                                            <div className="analytics-updated">
+                                                                Updated: {new Date(a.lastUpdated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="analytics-lists">
-                                                        <div className="analytics-source-list">
-                                                            <div className="analytics-list-label source-label">Source</div>
-                                                            {redir.sourceUrls.map(s => (
-                                                                <div key={s.id} className="analytics-url-item source-item">
-                                                                    <span>{s.title || s.url}</span>
-                                                                    {s.pushStatus?.given && <span className="push-badge push-given-badge">Push</span>}
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        <div className="analytics-arrow">→</div>
-                                                        <div className="analytics-dest-list">
-                                                            <div className="analytics-list-label dest-label">Redirected</div>
-                                                            {redir.redirectedArticleIds.map(aid => {
-                                                                const art = group.articles.find(a => a.id === aid)
-                                                                if (!art) return null
-                                                                return (
-                                                                    <div key={aid} className="analytics-url-item dest-item">
-                                                                        <span>{art.title || art.url}</span>
-                                                                        {art.pushStatus?.given && <span className="push-badge push-given-badge">Push</span>}
-                                                                        {art.pushStatus?.pushPassed && <span className="push-badge push-passed-badge">Passed</span>}
-                                                                    </div>
-                                                                )
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                )
+                                            })}
                                         </div>
-                                    )}
-                                </div>
-                            ))
+
+                                        {/* Redirection Summary below articles */}
+                                        {(group.redirectionSets || []).length > 0 && (
+                                            <div className="analytics-redir-summary">
+                                                {group.redirectionSets.map(redir => (
+                                                    <div key={redir.id} className="analytics-redir-card">
+                                                        <div className="analytics-redir-name">
+                                                            <span className={`redir-status-dot ${redir.toggleOn ? 'dot-green' : 'dot-red'}`}></span>
+                                                            {redir.name}
+                                                            {redir.duration && <span className="analytics-duration">⏱ {redir.duration}</span>}
+                                                        </div>
+                                                        <div className="analytics-lists">
+                                                            <div className="analytics-source-list">
+                                                                <div className="analytics-list-label source-label">Source</div>
+                                                                {redir.sourceUrls.map(s => (
+                                                                    <div key={s.id} className="analytics-url-item source-item">
+                                                                        <span>{s.title || s.url}</span>
+                                                                        {s.pushStatus?.given && <span className="push-badge push-given-badge">Push</span>}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            <div className="analytics-arrow">→</div>
+                                                            <div className="analytics-dest-list">
+                                                                <div className="analytics-list-label dest-label">Redirected</div>
+                                                                {redir.redirectedArticleIds.map(aid => {
+                                                                    const art = group.articles.find(a => a.id === aid)
+                                                                    if (!art) return null
+                                                                    return (
+                                                                        <div key={aid} className="analytics-url-item dest-item">
+                                                                            <span>{art.title || art.url}</span>
+                                                                            {art.pushStatus?.given && <span className="push-badge push-given-badge">Push</span>}
+                                                                            {art.pushStatus?.pushPassed && <span className="push-badge push-passed-badge">Passed</span>}
+                                                                        </div>
+                                                                    )
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )
+                            })
                         )}
                     </div>
 
@@ -602,6 +634,13 @@ function DomainView({ activeTab, setActiveTab }) {
                         onClose={() => setAnalyticsPushModal(false)}
                         onSubmit={handleAnalyticsPush}
                         targetLabel={analyticsPushTarget?.label}
+                    />
+                    <ArticleDetailModal
+                        isOpen={!!articleDetailOpen}
+                        onClose={() => setArticleDetailOpen(null)}
+                        article={articleDetailOpen}
+                        domainId={id}
+                        selectedDate={selectedDate}
                     />
                 </>
             )}

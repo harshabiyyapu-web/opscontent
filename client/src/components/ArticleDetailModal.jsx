@@ -1,107 +1,133 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react'
 
-function ArticleDetailModal({ article, onClose }) {
-    if (!article) return null;
+function ArticleDetailModal({ isOpen, onClose, article, domainId, selectedDate }) {
+    const [details, setDetails] = useState(null)
+    const [loading, setLoading] = useState(false)
 
-    const formatTime = (isoString) => {
-        if (!isoString) return '—';
-        const date = new Date(isoString);
-        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    };
+    useEffect(() => {
+        if (!isOpen || !article) return
+        setLoading(true)
+        fetch(`/api/domains/${domainId}/session/article-detail/${article.id}?date=${selectedDate}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                setDetails(data)
+                setLoading(false)
+            })
+            .catch(() => setLoading(false))
+    }, [isOpen, article, domainId, selectedDate])
 
-    const formatDate = (isoString) => {
-        if (!isoString) return '—';
-        const date = new Date(isoString);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    };
+    if (!isOpen || !article) return null
 
-    const timelineEvents = [
-        { label: 'Added', time: article.addedAt, icon: '✅', done: !!article.addedAt },
-        { label: 'Indexed', time: article.indexedAt, icon: '🔍', done: !!article.indexedAt },
-        { label: 'Focus Started', time: article.focusStartedAt, icon: '🎯', done: !!article.focusStartedAt },
-        { label: 'Push Given', time: article.pushGivenAt, icon: '🔔', done: !!article.pushGivenAt }
-    ];
+    const d = details || {}
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="article-detail-modal" onClick={e => e.stopPropagation()}>
-                <button className="modal-close" onClick={onClose}>×</button>
-
-                {/* Header */}
-                <div className="article-detail-header">
-                    {article.featuredImage && (
-                        <div
-                            className="article-detail-image"
-                            style={{ backgroundImage: `url(${article.featuredImage})` }}
-                        />
-                    )}
-                    <h2 className="article-detail-title">{article.title || article.label}</h2>
-                    <p className="article-detail-url">{article.url}</p>
+            <div className="modal article-detail-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
+                <div className="modal-header">
+                    <h3 className="modal-title">📋 Article Details</h3>
+                    <button className="modal-close" onClick={onClose}>×</button>
                 </div>
 
-                {/* Timeline */}
-                <div className="article-timeline">
-                    <h3>Timeline</h3>
-                    <div className="timeline-list">
-                        {timelineEvents.map((event, i) => (
-                            <div key={i} className={`timeline-item ${event.done ? 'done' : 'pending'}`}>
-                                <div className="timeline-icon">{event.icon}</div>
-                                <div className="timeline-content">
-                                    <span className="timeline-label">{event.label}</span>
-                                    <span className="timeline-time">
-                                        {event.done ? `${formatDate(event.time)} at ${formatTime(event.time)}` : 'Pending'}
-                                    </span>
+                {loading ? (
+                    <div style={{ textAlign: 'center', padding: 32, color: '#b09a7a' }}>⏳ Loading...</div>
+                ) : (
+                    <div className="article-detail-body">
+                        <div className="detail-card">
+                            <div className="detail-card-label">Article</div>
+                            <h4 className="detail-article-title">{article.title || 'Untitled'}</h4>
+                            <a href={article.url} target="_blank" rel="noopener noreferrer" className="detail-article-url">
+                                🔗 {article.url}
+                            </a>
+                        </div>
+
+                        <div className="detail-card">
+                            <div className="detail-card-label">Timeline</div>
+                            <div className="detail-timeline">
+                                <div className="detail-timeline-item">
+                                    <span className="dt-icon">📥</span>
+                                    <span className="dt-label">Added</span>
+                                    <span className="dt-value">{d.addedAt ? new Date(d.addedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'N/A'}</span>
+                                </div>
+                                {d.redirectionStarted && (
+                                    <div className="detail-timeline-item">
+                                        <span className="dt-icon">▶</span>
+                                        <span className="dt-label">Redirect Started</span>
+                                        <span className="dt-value">{d.redirectionStarted}</span>
+                                    </div>
+                                )}
+                                {d.redirectionStopped && (
+                                    <div className="detail-timeline-item">
+                                        <span className="dt-icon">⏹</span>
+                                        <span className="dt-label">Redirect Stopped</span>
+                                        <span className="dt-value">{d.redirectionStopped}</span>
+                                    </div>
+                                )}
+                                {d.redirectionDuration && (
+                                    <div className="detail-timeline-item">
+                                        <span className="dt-icon">⏱</span>
+                                        <span className="dt-label">Duration</span>
+                                        <span className="dt-value">{d.redirectionDuration}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="detail-card">
+                            <div className="detail-card-label">Traffic ({selectedDate})</div>
+                            <div className="detail-stats-grid">
+                                <div className="detail-stat">
+                                    <span className="detail-stat-val">{d.todayVisitors ?? '—'}</span>
+                                    <span className="detail-stat-lbl">Visitors</span>
+                                </div>
+                                <div className="detail-stat">
+                                    <span className="detail-stat-val">{d.todayPageviews ?? '—'}</span>
+                                    <span className="detail-stat-lbl">Pageviews</span>
+                                </div>
+                                <div className="detail-stat">
+                                    <span className="detail-stat-val">{d.realtimeVisitors ?? '—'}</span>
+                                    <span className="detail-stat-lbl">Live Now</span>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                </div>
+                        </div>
 
-                {/* Hourly Stats */}
-                {article.hourlySnapshots && article.hourlySnapshots.length > 0 && (
-                    <div className="article-hourly-stats">
-                        <h3>Hourly Traffic (Last 10 Hours)</h3>
-                        <table className="hourly-table">
-                            <thead>
-                                <tr>
-                                    <th>Hour</th>
-                                    <th>Visitors</th>
-                                    <th>Δ Change</th>
-                                    <th>% Change</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {article.hourlySnapshots.map((snap, i) => (
-                                    <tr key={i}>
-                                        <td>{new Date(snap.hour).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
-                                        <td>{snap.visitors}</td>
-                                        <td className={snap.delta >= 0 ? 'positive' : 'negative'}>
-                                            {snap.delta >= 0 ? '+' : ''}{snap.delta}
-                                        </td>
-                                        <td className={snap.percentChange >= 0 ? 'positive' : 'negative'}>
-                                            {snap.percentChange >= 0 ? '+' : ''}{snap.percentChange}%
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                        {d.pushStatus && (
+                            <div className="detail-card">
+                                <div className="detail-card-label">Push Status</div>
+                                {d.pushStatus.given ? (
+                                    <div className="detail-timeline">
+                                        <div className="detail-timeline-item"><span className="dt-icon">🔔</span><span className="dt-label">Push Given</span><span className="dt-value">Yes</span></div>
+                                        <div className="detail-timeline-item"><span className="dt-icon">🌐</span><span className="dt-label">Site</span><span className="dt-value">{d.pushStatus.siteName}</span></div>
+                                        <div className="detail-timeline-item"><span className="dt-icon">📧</span><span className="dt-label">Email</span><span className="dt-value">{d.pushStatus.email}</span></div>
+                                        <div className="detail-timeline-item"><span className="dt-icon">🕐</span><span className="dt-label">Time</span><span className="dt-value">{d.pushStatus.time}</span></div>
+                                        <div className="detail-timeline-item"><span className="dt-icon">📅</span><span className="dt-label">Given At</span><span className="dt-value">{new Date(d.pushStatus.givenAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span></div>
+                                    </div>
+                                ) : d.pushStatus.pushPassed ? (
+                                    <div className="detail-push-badge passed">✓ Push Passed</div>
+                                ) : (
+                                    <div className="detail-push-badge none">No push yet</div>
+                                )}
+                            </div>
+                        )}
 
-                {/* Focus Group Info */}
-                {article.focusGroup && (
-                    <div className="article-focus-info">
-                        <span
-                            className="focus-badge"
-                            style={{ backgroundColor: article.focusGroup.color }}
-                        >
-                            {article.focusGroup.name}
-                        </span>
+                        {d.snapshots && d.snapshots.length > 0 && (
+                            <div className="detail-card">
+                                <div className="detail-card-label">Traffic Snapshots</div>
+                                <div className="detail-snapshots">
+                                    {d.snapshots.map((snap, idx) => (
+                                        <div key={idx} className="detail-snap-item">
+                                            <span>🕐 {snap.timestamp}</span>
+                                            <span><strong>{snap.visitors}</strong> live</span>
+                                            <span>{snap.pageviews} views</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
         </div>
-    );
+    )
 }
 
-export default ArticleDetailModal;
+export default ArticleDetailModal
