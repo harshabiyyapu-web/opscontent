@@ -37,16 +37,16 @@ function Sidebar({ activeTab, onTabChange }) {
                             <span>📝 Articles</span>
                         </button>
                         <button
-                            className={`nav-item ${activeTab === 'focus' ? 'active' : ''}`}
-                            onClick={() => onTabChange?.('focus')}
+                            className={`nav-item ${activeTab === 'redirection' ? 'active' : ''}`}
+                            onClick={() => onTabChange?.('redirection')}
                         >
-                            <span>🎯 Focus</span>
+                            <span>🔀 Redirection</span>
                         </button>
                         <button
-                            className={`nav-item ${activeTab === 'tracking' ? 'active' : ''}`}
-                            onClick={() => onTabChange?.('tracking')}
+                            className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
+                            onClick={() => onTabChange?.('analytics')}
                         >
-                            <span>📊 Tracking</span>
+                            <span>📊 Analytics</span>
                         </button>
                         <button
                             className={`nav-item ${activeTab === 'setup' ? 'active' : ''}`}

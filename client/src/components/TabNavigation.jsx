@@ -3,8 +3,8 @@ import { useState } from 'react';
 function TabNavigation({ activeTab, onTabChange }) {
     const tabs = [
         { id: 'articles', label: '📝 Articles', color: null },
-        { id: 'focus', label: '🎯 Focus', color: '#3b82f6' },
-        { id: 'tracking', label: '📊 Tracking', color: '#10b981' },
+        { id: 'redirection', label: '🔀 Redirection', color: '#3b82f6' },
+        { id: 'analytics', label: '📊 Analytics', color: '#10b981' },
         { id: 'setup', label: '⚙️ Setup', color: '#6b7280' }
     ];
 

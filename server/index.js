@@ -119,6 +119,9 @@ function getOrCreateSession(domainId, dateStr = getTodayDateString()) {
         store.sessions[sessionKey] = {
             date: dateStr,
             domainId: domainId,
+            contentGroups: [],    // Country-based article groups
+            redirectionSets: [],  // Source → Redirected URL mappings
+            // Legacy compatibility
             articles: [],
             focusGroups: []
         };
@@ -127,8 +130,25 @@ function getOrCreateSession(domainId, dateStr = getTodayDateString()) {
     return store.sessions[sessionKey];
 }
 
-// Focus group color palette
-const FOCUS_COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899'];
+// Preset countries with flags
+const PRESET_COUNTRIES = [
+    { name: 'India', flag: '🇮🇳' },
+    { name: 'Mexico', flag: '🇲🇽' },
+    { name: 'Argentina', flag: '🇦🇷' },
+    { name: 'Italy', flag: '🇮🇹' },
+    { name: 'Ireland', flag: '🇮🇪' },
+    { name: 'Greece', flag: '🇬🇷' },
+    { name: 'USA', flag: '🇺🇸' }
+];
+
+// Color palette for redirection sets
+const REDIR_COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899'];
+
+// Helper: get IST time in 12-hour format
+function getISTTime() {
+    const now = new Date();
+    return now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+}
 
 // ============ PLAUSIBLE SERVICE ============
 const PlausibleService = {
@@ -520,291 +540,355 @@ app.delete('/api/domains/:id/urls/:urlId', (req, res) => {
     res.status(204).send();
 });
 
-// ============ SESSION & FOCUS GROUP ROUTES ============
+// ============ SESSION & CONTENT GROUP ROUTES ============
+
+// Get preset countries
+app.get('/api/countries', (req, res) => {
+    res.json(PRESET_COUNTRIES);
+});
 
 // Get session for a domain by date
 app.get('/api/domains/:id/session/:date', (req, res) => {
     const { id: domainId, date } = req.params;
-
     const domain = store.domains.find(d => d.id === domainId);
-    if (!domain) {
-        return res.status(404).json({ error: 'Domain not found' });
-    }
-
+    if (!domain) return res.status(404).json({ error: 'Domain not found' });
     const session = getOrCreateSession(domainId, date);
     res.json(session);
 });
 
-// Get today's session (convenience endpoint)
+// Get today's session
 app.get('/api/domains/:id/session', (req, res) => {
     const domainId = req.params.id;
-
     const domain = store.domains.find(d => d.id === domainId);
-    if (!domain) {
-        return res.status(404).json({ error: 'Domain not found' });
-    }
-
+    if (!domain) return res.status(404).json({ error: 'Domain not found' });
     const session = getOrCreateSession(domainId);
     res.json(session);
 });
 
-// Add article to session (today's content)
-app.post('/api/domains/:id/session/articles', async (req, res) => {
-    const domainId = req.params.id;
-    const { url, label, date } = req.body;
+// ---- Content Groups ----
 
-    if (!url) {
-        return res.status(400).json({ error: 'URL is required' });
-    }
+// Create content group (country + articles)
+app.post('/api/domains/:id/session/groups', async (req, res) => {
+    const domainId = req.params.id;
+    const { country, countryFlag, customCountryName, urls, date } = req.body;
 
     const domain = store.domains.find(d => d.id === domainId);
-    if (!domain) {
-        return res.status(404).json({ error: 'Domain not found' });
-    }
+    if (!domain) return res.status(404).json({ error: 'Domain not found' });
 
     const session = getOrCreateSession(domainId, date || getTodayDateString());
 
-    // Fetch OG data
-    const ogData = await fetchOgData(url);
+    const resolvedCountry = country === 'Custom' ? (customCountryName || 'Custom') : country;
+    const resolvedFlag = country === 'Custom' ? '✏️' : (countryFlag || '🏳️');
 
-    const article = {
-        id: uuidv4(),
-        url,
-        label: label || ogData.title || url,
-        title: ogData.title || label || url,
-        featuredImage: ogData.image,
-        indexStatus: 'unchecked',
-        isTracking: false,
-        focusGroupId: null,
-        // Timestamps for timeline
-        addedAt: new Date().toISOString(),
-        indexedAt: null,
-        focusStartedAt: null,
-        pushGivenAt: null,
-        // Hourly analytics snapshots (last 10 hours)
-        hourlySnapshots: []
-    };
+    // Parse URLs
+    const urlList = (urls || '').split('\n').map(u => u.trim()).filter(u => u.length > 0);
 
-    session.articles.push(article);
-
-    // Also add to legacy urls store for compatibility
-    if (!store.urls[domainId]) store.urls[domainId] = [];
-    store.urls[domainId].push({ ...article, contentType: 'today' });
-
-    res.status(201).json(article);
-});
-
-// Create a focus group
-app.post('/api/domains/:id/session/focus-groups', (req, res) => {
-    const domainId = req.params.id;
-    const { name, startTime, date } = req.body;
-
-    const domain = store.domains.find(d => d.id === domainId);
-    if (!domain) {
-        return res.status(404).json({ error: 'Domain not found' });
+    // Fetch OG data for each URL
+    const articles = [];
+    for (const url of urlList) {
+        const ogData = await fetchOgData(url);
+        articles.push({
+            id: uuidv4(),
+            url,
+            title: ogData.title || url,
+            image: ogData.image,
+            indexStatus: 'unchecked',
+            addedAt: new Date().toISOString(),
+            pushStatus: { given: false, siteName: '', email: '', time: '', givenAt: null }
+        });
     }
 
-    const session = getOrCreateSession(domainId, date || getTodayDateString());
-
-    const colorIndex = session.focusGroups.length % FOCUS_COLORS.length;
-
-    const focusGroup = {
+    const group = {
         id: uuidv4(),
-        name: name || `Focus Set ${session.focusGroups.length + 1}`,
-        startTime: startTime || new Date().toTimeString().slice(0, 5),
-        color: FOCUS_COLORS[colorIndex],
-        articles: [],
-        pushStatus: {
-            due: false,
-            given: false,
-            givenAt: null
-        },
+        country: resolvedCountry,
+        countryFlag: resolvedFlag,
+        articles,
         createdAt: new Date().toISOString()
     };
 
-    session.focusGroups.push(focusGroup);
-    res.status(201).json(focusGroup);
+    session.contentGroups.push(group);
+
+    // Legacy compat
+    articles.forEach(a => {
+        session.articles.push({ ...a, label: a.title, isTracking: false, focusGroupId: null, groupId: group.id });
+    });
+
+    res.status(201).json(group);
 });
 
-// Add articles to a focus group
-app.post('/api/domains/:id/session/focus-groups/:fgId/articles', (req, res) => {
-    const { id: domainId, fgId } = req.params;
-    const { articleIds, date } = req.body;
+// Add articles to existing group
+app.post('/api/domains/:id/session/groups/:gid/articles', async (req, res) => {
+    const { id: domainId, gid } = req.params;
+    const { urls, date } = req.body;
+
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+    const group = session.contentGroups.find(g => g.id === gid);
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+
+    const urlList = (urls || '').split('\n').map(u => u.trim()).filter(u => u.length > 0);
+    const newArticles = [];
+    for (const url of urlList) {
+        const ogData = await fetchOgData(url);
+        const article = {
+            id: uuidv4(),
+            url,
+            title: ogData.title || url,
+            image: ogData.image,
+            indexStatus: 'unchecked',
+            addedAt: new Date().toISOString(),
+            pushStatus: { given: false, siteName: '', email: '', time: '', givenAt: null }
+        };
+        group.articles.push(article);
+        newArticles.push(article);
+    }
+
+    res.status(201).json(newArticles);
+});
+
+// Delete content group
+app.delete('/api/domains/:id/session/groups/:gid', (req, res) => {
+    const { id: domainId, gid } = req.params;
+    const { date } = req.query;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+    const idx = session.contentGroups.findIndex(g => g.id === gid);
+    if (idx === -1) return res.status(404).json({ error: 'Group not found' });
+    session.contentGroups.splice(idx, 1);
+    res.status(204).send();
+});
+
+// Delete article from group
+app.delete('/api/domains/:id/session/groups/:gid/articles/:aid', (req, res) => {
+    const { id: domainId, gid, aid } = req.params;
+    const { date } = req.query;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+    const group = session.contentGroups.find(g => g.id === gid);
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+    const aidx = group.articles.findIndex(a => a.id === aid);
+    if (aidx === -1) return res.status(404).json({ error: 'Article not found' });
+    group.articles.splice(aidx, 1);
+    res.status(204).send();
+});
+
+// Mark article as indexed
+app.patch('/api/domains/:id/session/groups/:gid/articles/:aid/indexed', (req, res) => {
+    const { id: domainId, gid, aid } = req.params;
+    const { date } = req.body;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+    const group = session.contentGroups.find(g => g.id === gid);
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+    const article = group.articles.find(a => a.id === aid);
+    if (!article) return res.status(404).json({ error: 'Article not found' });
+    article.indexStatus = 'indexed';
+    article.indexedAt = new Date().toISOString();
+    res.json(article);
+});
+
+// ---- Redirection Sets ----
+
+// Create redirection set
+app.post('/api/domains/:id/session/redirections', async (req, res) => {
+    const domainId = req.params.id;
+    const { name, sourceUrls, redirectedArticleIds, groupId, date } = req.body;
 
     const session = getOrCreateSession(domainId, date || getTodayDateString());
 
-    const focusGroup = session.focusGroups.find(fg => fg.id === fgId);
-    if (!focusGroup) {
-        return res.status(404).json({ error: 'Focus group not found' });
+    // Parse source URLs
+    const sourceUrlList = (sourceUrls || '').split('\n').map(u => u.trim()).filter(u => u.length > 0);
+    const sources = [];
+    for (const url of sourceUrlList) {
+        const ogData = await fetchOgData(url);
+        sources.push({
+            id: uuidv4(),
+            url,
+            title: ogData.title || url,
+            pushStatus: { given: false, siteName: '', email: '', time: '', givenAt: null }
+        });
     }
 
-    // Add articles to focus group
-    articleIds.forEach(articleId => {
-        const article = session.articles.find(a => a.id === articleId);
-        if (article && !focusGroup.articles.includes(articleId)) {
-            focusGroup.articles.push(articleId);
-            article.focusGroupId = fgId;
-            article.isTracking = true; // Enable tracking when added to focus
-            article.focusStartedAt = new Date().toISOString(); // Record focus start time
+    const colorIndex = session.redirectionSets.length % REDIR_COLORS.length;
 
-            // Update legacy store
-            if (store.urls[domainId]) {
-                const legacyUrl = store.urls[domainId].find(u => u.id === articleId);
-                if (legacyUrl) {
-                    legacyUrl.isTracking = true;
-                    legacyUrl.focusGroupId = fgId;
-                    legacyUrl.focusStartedAt = article.focusStartedAt;
-                }
+    const redirSet = {
+        id: uuidv4(),
+        name: name || `Redirection ${session.redirectionSets.length + 1}`,
+        groupId: groupId || null,
+        sourceUrls: sources,
+        redirectedArticleIds: redirectedArticleIds || [],
+        color: REDIR_COLORS[colorIndex],
+        toggleOn: false,
+        startTime: null,
+        stopTime: null,
+        duration: null,
+        createdAt: new Date().toISOString()
+    };
+
+    session.redirectionSets.push(redirSet);
+    res.status(201).json(redirSet);
+});
+
+// Delete redirection set
+app.delete('/api/domains/:id/session/redirections/:rid', (req, res) => {
+    const { id: domainId, rid } = req.params;
+    const { date } = req.query;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+    const idx = session.redirectionSets.findIndex(r => r.id === rid);
+    if (idx === -1) return res.status(404).json({ error: 'Redirection not found' });
+    session.redirectionSets.splice(idx, 1);
+    res.status(204).send();
+});
+
+// Toggle redirection on/off (visual only)
+app.patch('/api/domains/:id/session/redirections/:rid/toggle', (req, res) => {
+    const { id: domainId, rid } = req.params;
+    const { toggleOn, date } = req.body;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+    const redir = session.redirectionSets.find(r => r.id === rid);
+    if (!redir) return res.status(404).json({ error: 'Redirection not found' });
+    redir.toggleOn = toggleOn !== undefined ? toggleOn : !redir.toggleOn;
+    res.json(redir);
+});
+
+// Start/Stop timer
+app.patch('/api/domains/:id/session/redirections/:rid/timer', (req, res) => {
+    const { id: domainId, rid } = req.params;
+    const { action, date } = req.body;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+    const redir = session.redirectionSets.find(r => r.id === rid);
+    if (!redir) return res.status(404).json({ error: 'Redirection not found' });
+
+    const istTime = getISTTime();
+
+    if (action === 'start') {
+        redir.startTime = istTime;
+        redir.stopTime = null;
+        redir.duration = null;
+    } else if (action === 'stop') {
+        redir.stopTime = istTime;
+        // Calculate duration
+        if (redir.startTime) {
+            const parseTime = (t) => {
+                const match = t.match(/(\d+):(\d+)\s*(am|pm)/i);
+                if (!match) return 0;
+                let h = parseInt(match[1]);
+                const m = parseInt(match[2]);
+                const period = match[3].toLowerCase();
+                if (period === 'pm' && h !== 12) h += 12;
+                if (period === 'am' && h === 12) h = 0;
+                return h * 60 + m;
+            };
+            const startMin = parseTime(redir.startTime);
+            const stopMin = parseTime(redir.stopTime);
+            let diff = stopMin - startMin;
+            if (diff < 0) diff += 24 * 60;
+            const hours = Math.floor(diff / 60);
+            const mins = diff % 60;
+            redir.duration = `${hours}h ${mins}m`;
+        }
+    }
+
+    res.json(redir);
+});
+
+// ---- Aplu Push ----
+
+// Give Aplu push to a source URL in a redirection set
+app.patch('/api/domains/:id/session/redirections/:rid/push/source/:sid', (req, res) => {
+    const { id: domainId, rid, sid } = req.params;
+    const { siteName, email, time, date } = req.body;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+    const redir = session.redirectionSets.find(r => r.id === rid);
+    if (!redir) return res.status(404).json({ error: 'Redirection not found' });
+
+    const source = redir.sourceUrls.find(s => s.id === sid);
+    if (!source) return res.status(404).json({ error: 'Source URL not found' });
+
+    source.pushStatus = {
+        given: true,
+        siteName: siteName || '',
+        email: email || '',
+        time: time || '',
+        givenAt: new Date().toISOString()
+    };
+
+    // Propagate "Push Passed" to all redirected articles in this redirection set
+    redir.redirectedArticleIds.forEach(articleId => {
+        // Find article in content groups
+        for (const group of session.contentGroups) {
+            const article = group.articles.find(a => a.id === articleId);
+            if (article && !article.pushStatus.given) {
+                article.pushStatus.pushPassed = true;
+                article.pushStatus.passedFrom = source.id;
+                article.pushStatus.passedAt = new Date().toISOString();
             }
         }
     });
 
-    res.json(focusGroup);
+    res.json(redir);
 });
 
-// Mark push as given for a focus group
-app.patch('/api/domains/:id/session/focus-groups/:fgId/push', (req, res) => {
-    const { id: domainId, fgId } = req.params;
-    const { given, givenAt, date } = req.body;
-
+// Give Aplu push to a redirected article
+app.patch('/api/domains/:id/session/push/article/:aid', (req, res) => {
+    const { id: domainId, aid } = req.params;
+    const { siteName, email, time, date } = req.body;
     const session = getOrCreateSession(domainId, date || getTodayDateString());
 
-    const focusGroup = session.focusGroups.find(fg => fg.id === fgId);
-    if (!focusGroup) {
-        return res.status(404).json({ error: 'Focus group not found' });
+    // Find article across all content groups
+    for (const group of session.contentGroups) {
+        const article = group.articles.find(a => a.id === aid);
+        if (article) {
+            article.pushStatus = {
+                given: true,
+                siteName: siteName || '',
+                email: email || '',
+                time: time || '',
+                givenAt: new Date().toISOString()
+            };
+            return res.json(article);
+        }
     }
 
-    const pushTime = givenAt || new Date().toISOString();
-    focusGroup.pushStatus.given = given !== undefined ? given : true;
-    focusGroup.pushStatus.givenAt = pushTime;
-
-    // Also update pushGivenAt on all articles in this focus group
-    focusGroup.articles.forEach(articleId => {
-        const article = session.articles.find(a => a.id === articleId);
-        if (article) {
-            article.pushGivenAt = pushTime;
-        }
-    });
-
-    res.json(focusGroup);
+    res.status(404).json({ error: 'Article not found' });
 });
 
-// Get all sessions for a domain (for history)
+// ---- Legacy compat routes ----
+
 app.get('/api/domains/:id/sessions', (req, res) => {
     const domainId = req.params.id;
-
     const domain = store.domains.find(d => d.id === domainId);
-    if (!domain) {
-        return res.status(404).json({ error: 'Domain not found' });
-    }
-
-    // Find all sessions for this domain
+    if (!domain) return res.status(404).json({ error: 'Domain not found' });
     const domainSessions = Object.entries(store.sessions)
         .filter(([key]) => key.startsWith(domainId))
         .map(([, session]) => ({
             date: session.date,
-            articleCount: session.articles.length,
-            focusGroupCount: session.focusGroups.length
+            groupCount: session.contentGroups.length,
+            redirectionCount: session.redirectionSets.length
         }))
         .sort((a, b) => b.date.localeCompare(a.date));
-
     res.json(domainSessions);
 });
 
-// Get article detail with timeline
-app.get('/api/domains/:id/session/articles/:articleId', (req, res) => {
-    const { id: domainId, articleId } = req.params;
-    const { date } = req.query;
-
-    const session = getOrCreateSession(domainId, date || getTodayDateString());
-    const article = session.articles.find(a => a.id === articleId);
-
-    if (!article) {
-        return res.status(404).json({ error: 'Article not found' });
-    }
-
-    // Get focus group info if assigned
-    let focusGroup = null;
-    if (article.focusGroupId) {
-        focusGroup = session.focusGroups.find(fg => fg.id === article.focusGroupId);
-    }
-
-    res.json({
-        ...article,
-        focusGroup: focusGroup ? { id: focusGroup.id, name: focusGroup.name, color: focusGroup.color } : null
-    });
-});
-
-// Mark article as indexed (with timestamp)
-app.patch('/api/domains/:id/session/articles/:articleId/indexed', (req, res) => {
-    const { id: domainId, articleId } = req.params;
-    const { date } = req.body;
-
-    const session = getOrCreateSession(domainId, date || getTodayDateString());
-    const article = session.articles.find(a => a.id === articleId);
-
-    if (!article) {
-        return res.status(404).json({ error: 'Article not found' });
-    }
-
-    article.indexStatus = 'indexed';
-    article.indexedAt = new Date().toISOString();
-
-    res.json(article);
-});
-
-// Delete article from session
-app.delete('/api/domains/:id/session/articles/:articleId', (req, res) => {
-    const { id: domainId, articleId } = req.params;
-    const { date } = req.query;
-
-    const session = getOrCreateSession(domainId, date || getTodayDateString());
-    const articleIndex = session.articles.findIndex(a => a.id === articleId);
-
-    if (articleIndex === -1) {
-        return res.status(404).json({ error: 'Article not found' });
-    }
-
-    // Remove from session
-    session.articles.splice(articleIndex, 1);
-
-    // Also remove from legacy store
-    if (store.urls[domainId]) {
-        const legacyIndex = store.urls[domainId].findIndex(u => u.id === articleId);
-        if (legacyIndex !== -1) {
-            store.urls[domainId].splice(legacyIndex, 1);
-        }
-    }
-
-    // Clean up analytics cache
-    delete store.analyticsCache[articleId];
-
-    res.status(204).send();
-});
-
-// Get tracking data by focus group
-app.get('/api/domains/:id/tracking', async (req, res) => {
+// Get tracking/analytics data grouped by country
+app.get('/api/domains/:id/analytics-groups', (req, res) => {
     const domainId = req.params.id;
-    const { focusGroupId, date } = req.query;
-
+    const { date } = req.query;
     const session = getOrCreateSession(domainId, date || getTodayDateString());
 
-    // Filter articles by focus group if specified
-    let articles = session.articles.filter(a => a.isTracking);
-    if (focusGroupId) {
-        articles = articles.filter(a => a.focusGroupId === focusGroupId);
-    }
+    const countryData = session.contentGroups.map(group => {
+        // Find redirection sets that reference articles from this group
+        const groupArticleIds = group.articles.map(a => a.id);
+        const relatedRedirections = session.redirectionSets.filter(r =>
+            r.redirectedArticleIds.some(id => groupArticleIds.includes(id)) || r.groupId === group.id
+        );
 
-    // Get focus group info
-    const focusGroup = focusGroupId ? session.focusGroups.find(fg => fg.id === focusGroupId) : null;
-
-    res.json({
-        focusGroup,
-        articles: articles.map(a => ({
-            ...a,
-            hourlySnapshots: a.hourlySnapshots || []
-        }))
+        return {
+            country: group.country,
+            countryFlag: group.countryFlag,
+            groupId: group.id,
+            articles: group.articles,
+            redirectionSets: relatedRedirections
+        };
     });
+
+    res.json(countryData);
 });
 
 // ============ INDEXING & PROMOTION ROUTES ============
