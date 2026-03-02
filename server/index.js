@@ -866,14 +866,48 @@ app.get('/api/domains/:id/sessions', (req, res) => {
     res.json(domainSessions);
 });
 
-// Get tracking/analytics data grouped by country
-app.get('/api/domains/:id/analytics-groups', (req, res) => {
+// Get tracking/analytics data grouped by country (with Plausible realtime)
+app.get('/api/domains/:id/analytics-groups', async (req, res) => {
     const domainId = req.params.id;
-    const { date } = req.query;
+    const { date, realtime } = req.query;
+    const apiKey = store.settings.plausibleApiKey;
     const session = getOrCreateSession(domainId, date || getTodayDateString());
 
+    const domain = store.domains.find(d => d.id === domainId);
+    if (!domain) return res.status(404).json({ error: 'Domain not found' });
+
+    const siteId = getSiteIdFromUrl(domain.url);
+
+    // Fetch Plausible realtime data for each article if requested
+    const analyticsMap = {};
+    if (realtime === 'true' && apiKey) {
+        for (const group of session.contentGroups) {
+            for (const article of group.articles) {
+                try {
+                    const cached = getCachedAnalytics(article.id);
+                    if (cached) {
+                        analyticsMap[article.id] = cached;
+                        continue;
+                    }
+                    const analytics = await PlausibleService.getUrlAnalytics(apiKey, siteId, article.url);
+                    const processedData = {
+                        ...analytics,
+                        percentChange: PlausibleService.calculatePercentageChange(
+                            analytics.totals?.visitors || 0,
+                            analytics.previousPeriod?.visitors || 0
+                        ),
+                        lastUpdated: new Date().toISOString()
+                    };
+                    setCachedAnalytics(article.id, processedData);
+                    analyticsMap[article.id] = processedData;
+                } catch (error) {
+                    analyticsMap[article.id] = { error: error.message, realtime: { visitors: 0 }, totals: {}, hourlyData: [] };
+                }
+            }
+        }
+    }
+
     const countryData = session.contentGroups.map(group => {
-        // Find redirection sets that reference articles from this group
         const groupArticleIds = group.articles.map(a => a.id);
         const relatedRedirections = session.redirectionSets.filter(r =>
             r.redirectedArticleIds.some(id => groupArticleIds.includes(id)) || r.groupId === group.id
@@ -883,12 +917,80 @@ app.get('/api/domains/:id/analytics-groups', (req, res) => {
             country: group.country,
             countryFlag: group.countryFlag,
             groupId: group.id,
-            articles: group.articles,
+            articles: group.articles.map(a => ({
+                ...a,
+                analytics: analyticsMap[a.id] || null,
+                trafficSnapshots: a.trafficSnapshots || []
+            })),
             redirectionSets: relatedRedirections
         };
     });
 
     res.json(countryData);
+});
+
+// Force refresh analytics for a specific article
+app.get('/api/domains/:id/analytics-article/:aid', async (req, res) => {
+    const { id: domainId, aid } = req.params;
+    const apiKey = store.settings.plausibleApiKey;
+    if (!apiKey) return res.status(400).json({ error: 'Plausible API key not configured' });
+
+    const domain = store.domains.find(d => d.id === domainId);
+    if (!domain) return res.status(404).json({ error: 'Domain not found' });
+
+    const siteId = getSiteIdFromUrl(domain.url);
+    const session = getOrCreateSession(domainId, req.query.date || getTodayDateString());
+
+    // Find article across all groups
+    let articleUrl = null;
+    for (const group of session.contentGroups) {
+        const art = group.articles.find(a => a.id === aid);
+        if (art) { articleUrl = art.url; break; }
+    }
+    if (!articleUrl) return res.status(404).json({ error: 'Article not found' });
+
+    try {
+        delete store.analyticsCache[aid]; // clear cache
+        const analytics = await PlausibleService.getUrlAnalytics(apiKey, siteId, articleUrl);
+        const processedData = {
+            ...analytics,
+            percentChange: PlausibleService.calculatePercentageChange(
+                analytics.totals?.visitors || 0,
+                analytics.previousPeriod?.visitors || 0
+            ),
+            lastUpdated: new Date().toISOString()
+        };
+        setCachedAnalytics(aid, processedData);
+        res.json(processedData);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Save traffic snapshot (timestamp the realtime traffic)
+app.post('/api/domains/:id/session/groups/:gid/articles/:aid/snapshot', (req, res) => {
+    const { id: domainId, gid, aid } = req.params;
+    const { visitors, pageviews, date } = req.body;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+
+    const group = session.contentGroups.find(g => g.id === gid);
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+
+    const article = group.articles.find(a => a.id === aid);
+    if (!article) return res.status(404).json({ error: 'Article not found' });
+
+    if (!article.trafficSnapshots) article.trafficSnapshots = [];
+
+    const snapshot = {
+        id: uuidv4(),
+        visitors: visitors || 0,
+        pageviews: pageviews || 0,
+        timestamp: getISTTime(),
+        isoTimestamp: new Date().toISOString()
+    };
+
+    article.trafficSnapshots.push(snapshot);
+    res.status(201).json(snapshot);
 });
 
 // ============ INDEXING & PROMOTION ROUTES ============

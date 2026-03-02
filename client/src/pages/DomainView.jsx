@@ -30,6 +30,10 @@ function DomainView({ activeTab, setActiveTab }) {
     const [redirArticleIds, setRedirArticleIds] = useState([])
     const [redirGroupId, setRedirGroupId] = useState(null)
 
+    // Analytics state
+    const [analyticsData, setAnalyticsData] = useState([])
+    const [analyticsLoading, setAnalyticsLoading] = useState(false)
+
     // Fetch session
     const fetchSession = useCallback(async () => {
         try {
@@ -55,8 +59,48 @@ function DomainView({ activeTab, setActiveTab }) {
         }
     }, [id])
 
+    // Fetch analytics (Plausible realtime)
+    const fetchAnalytics = useCallback(async () => {
+        setAnalyticsLoading(true)
+        try {
+            const response = await fetch(`/api/domains/${id}/analytics-groups?date=${selectedDate}&realtime=true`)
+            if (response.ok) {
+                const data = await response.json()
+                setAnalyticsData(data)
+            }
+        } catch (error) {
+            console.error('Failed to fetch analytics:', error)
+        } finally {
+            setAnalyticsLoading(false)
+        }
+    }, [id, selectedDate])
+
+    // Save traffic snapshot
+    const handleSaveSnapshot = async (groupId, articleId, visitors, pageviews) => {
+        try {
+            const response = await fetch(`/api/domains/${id}/session/groups/${groupId}/articles/${articleId}/snapshot`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ visitors, pageviews, date: selectedDate })
+            })
+            if (response.ok) {
+                // Refresh analytics to get updated snapshots
+                fetchAnalytics()
+            }
+        } catch (error) { console.error('Failed to save snapshot:', error) }
+    }
+
     useEffect(() => { fetchDomain() }, [fetchDomain])
     useEffect(() => { fetchSession() }, [fetchSession])
+
+    // Auto-refresh analytics every 30s when on analytics tab
+    useEffect(() => {
+        if (activeTab === 'analytics' && (session.contentGroups || []).length > 0) {
+            fetchAnalytics()
+            const interval = setInterval(fetchAnalytics, 30000)
+            return () => clearInterval(interval)
+        }
+    }, [activeTab, fetchAnalytics, session.contentGroups])
 
     // --- Content Group Handlers ---
     const handleAddGroup = async (e) => {
@@ -308,20 +352,137 @@ function DomainView({ activeTab, setActiveTab }) {
                             <p className="empty-state-text">Add content groups first to see analytics.</p>
                         </div>
                     ) : (
-                        (session.contentGroups || []).map(group => {
-                            const relatedRedirs = (session.redirectionSets || []).filter(r =>
-                                r.groupId === group.id || r.redirectedArticleIds.some(aid => group.articles.some(a => a.id === aid))
-                            )
-                            return (
-                                <div key={group.id} className="analytics-country-section">
-                                    <div className="analytics-country-header">
-                                        <span className="country-flag-large">{group.countryFlag}</span>
-                                        <h3>{group.country}</h3>
-                                        <span className="content-group-count">{group.articles.length} articles · {relatedRedirs.length} redirections</span>
-                                    </div>
+                        (analyticsData || []).map(group => (
+                            <div key={group.groupId} className="analytics-country-section">
+                                <div className="analytics-country-header">
+                                    <span className="country-flag-large">{group.countryFlag}</span>
+                                    <h3>{group.country}</h3>
+                                    <span className="content-group-count">{group.articles.length} articles</span>
+                                    <button className="btn btn-primary btn-sm" onClick={fetchAnalytics} style={{ marginLeft: 'auto' }} disabled={analyticsLoading}>
+                                        {analyticsLoading ? '⏳' : '🔄'} Refresh
+                                    </button>
+                                </div>
 
-                                    {relatedRedirs.length > 0 ? (
-                                        relatedRedirs.map(redir => (
+                                <div className="analytics-articles-list">
+                                    {group.articles.map(article => {
+                                        const a = article.analytics || {}
+                                        const rt = a.realtime || {}
+                                        const totals = a.totals || {}
+                                        const hourlyData = a.hourlyData || []
+                                        const maxVal = Math.max(...hourlyData.map(d => d.visitors || 0), 1)
+                                        const snapshots = article.trafficSnapshots || []
+
+                                        return (
+                                            <div key={article.id} className="analytics-article-card">
+                                                {/* Article Header with Image */}
+                                                <div className="analytics-article-header">
+                                                    <div className="analytics-article-img-wrap">
+                                                        {article.image ? (
+                                                            <img src={article.image} alt="" className="analytics-article-img" onError={e => { e.target.style.display = 'none' }} />
+                                                        ) : (
+                                                            <div className="analytics-article-img-placeholder">📄</div>
+                                                        )}
+                                                    </div>
+                                                    <div className="analytics-article-info-col">
+                                                        <h4 className="analytics-article-title">{article.title}</h4>
+                                                        <a href={article.url} target="_blank" rel="noopener noreferrer" className="analytics-article-link">
+                                                            {(() => { try { return new URL(article.url).hostname + new URL(article.url).pathname.slice(0, 30) } catch { return article.url.slice(0, 50) } })()}
+                                                        </a>
+                                                        {article.pushStatus?.given && <span className="push-badge push-given-badge" style={{ marginTop: 4 }}>Push Given</span>}
+                                                        {article.pushStatus?.pushPassed && <span className="push-badge push-passed-badge" style={{ marginTop: 4 }}>Push Passed</span>}
+                                                    </div>
+                                                    {/* Realtime Visitors Big Number */}
+                                                    <div className="analytics-realtime-big">
+                                                        <div className="realtime-live-indicator">
+                                                            <span className="live-dot-pulse"></span>
+                                                            <span className="live-text">LIVE</span>
+                                                        </div>
+                                                        <div className="realtime-big-number">{rt.visitors || 0}</div>
+                                                        <div className="realtime-big-label">visitors now</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Traffic Chart */}
+                                                {hourlyData.length > 0 && (
+                                                    <div className="analytics-mini-chart">
+                                                        <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="mini-chart-svg">
+                                                            <defs>
+                                                                <linearGradient id={`grad-${article.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                                                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
+                                                                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+                                                                </linearGradient>
+                                                            </defs>
+                                                            <path
+                                                                d={`M ${hourlyData.map((d, i) => `${(i / (hourlyData.length - 1 || 1)) * 100},${40 - ((d.visitors || 0) / maxVal) * 35}`).join(' L ')}`}
+                                                                fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinejoin="round"
+                                                            />
+                                                            <path
+                                                                d={`M 0,40 ${hourlyData.map((d, i) => `L ${(i / (hourlyData.length - 1 || 1)) * 100},${40 - ((d.visitors || 0) / maxVal) * 35}`).join(' ')} L 100,40 Z`}
+                                                                fill={`url(#grad-${article.id})`}
+                                                            />
+                                                        </svg>
+                                                        <div className="mini-chart-labels">
+                                                            <span>24h ago</span>
+                                                            <span>Now</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Today's Totals */}
+                                                <div className="analytics-totals-row">
+                                                    <div className="analytics-metric">
+                                                        <span className="analytics-metric-val">{totals.visitors || 0}</span>
+                                                        <span className="analytics-metric-lbl">Today</span>
+                                                    </div>
+                                                    <div className="analytics-metric">
+                                                        <span className="analytics-metric-val">{totals.pageviews || 0}</span>
+                                                        <span className="analytics-metric-lbl">Views</span>
+                                                    </div>
+                                                    <div className="analytics-metric">
+                                                        <span className="analytics-metric-val">{totals.bounce_rate ? `${Math.round(totals.bounce_rate)}%` : '0%'}</span>
+                                                        <span className="analytics-metric-lbl">Bounce</span>
+                                                    </div>
+                                                    <div className="analytics-metric">
+                                                        <span className="analytics-metric-val">{totals.visit_duration ? `${Math.floor(totals.visit_duration / 60)}m` : '0s'}</span>
+                                                        <span className="analytics-metric-lbl">Avg Time</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Timestamp Button + Saved Snapshots */}
+                                                <div className="analytics-snapshot-section">
+                                                    <button
+                                                        className="btn btn-snapshot"
+                                                        onClick={() => handleSaveSnapshot(group.groupId, article.id, rt.visitors || 0, totals.pageviews || 0)}
+                                                    >
+                                                        📸 Timestamp Traffic ({rt.visitors || 0} visitors)
+                                                    </button>
+                                                    {snapshots.length > 0 && (
+                                                        <div className="snapshot-list">
+                                                            {snapshots.map(snap => (
+                                                                <div key={snap.id} className="snapshot-item">
+                                                                    <span className="snapshot-time">{snap.timestamp}</span>
+                                                                    <span className="snapshot-visitors">👁 {snap.visitors}</span>
+                                                                    <span className="snapshot-views">📄 {snap.pageviews}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {a.lastUpdated && (
+                                                    <div className="analytics-updated">
+                                                        Updated: {new Date(a.lastUpdated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+
+                                {/* Redirection Summary below articles */}
+                                {(group.redirectionSets || []).length > 0 && (
+                                    <div className="analytics-redir-summary">
+                                        {group.redirectionSets.map(redir => (
                                             <div key={redir.id} className="analytics-redir-card">
                                                 <div className="analytics-redir-name">
                                                     <span className={`redir-status-dot ${redir.toggleOn ? 'dot-green' : 'dot-red'}`}></span>
@@ -355,13 +516,11 @@ function DomainView({ activeTab, setActiveTab }) {
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-muted" style={{ padding: '0.75rem' }}>No redirections for this country</p>
-                                    )}
-                                </div>
-                            )
-                        })
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))
                     )}
                 </div>
             )}
