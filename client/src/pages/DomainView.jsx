@@ -7,6 +7,7 @@ import FocusGroupCard from '../components/FocusGroupCard'
 import TabNavigation from '../components/TabNavigation'
 import ArticleDetailModal from '../components/ArticleDetailModal'
 import TrackingScreen from '../components/TrackingScreen'
+import BasicSetup from '../components/BasicSetup'
 
 function DomainView({ activeTab, setActiveTab }) {
     const { id } = useParams()
@@ -323,6 +324,15 @@ function DomainView({ activeTab, setActiveTab }) {
 
             {activeTab === 'tracking' && (
                 <TrackingScreen domainId={id} session={session} selectedDate={selectedDate} />
+            )}
+
+            {activeTab === 'setup' && (
+                <div className="content-section">
+                    <div className="content-section-header">
+                        <h2 className="content-section-title">⚙️ Basic Setup</h2>
+                    </div>
+                    <BasicSetup domain={domain} domainId={id} />
+                </div>
             )}
 
             {/* Modals */}

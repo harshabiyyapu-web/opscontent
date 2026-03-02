@@ -6,7 +6,13 @@ function Dashboard() {
     const [domains, setDomains] = useState([])
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
-    const [formData, setFormData] = useState({ name: '', url: '' })
+    const [formData, setFormData] = useState({
+        name: '', url: '',
+        googleTraffic: false,
+        apluPush: false, adsterraAd: false, taboolaContact: false,
+        wpUsername: '', wpPassword: ''
+    })
+    const [showWpPassword, setShowWpPassword] = useState(false)
     const [submitting, setSubmitting] = useState(false)
 
     useEffect(() => {
@@ -33,14 +39,32 @@ function Dashboard() {
             const response = await fetch('/api/domains', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
+                body: JSON.stringify({
+                    name: formData.name,
+                    url: formData.url,
+                    googleTraffic: formData.googleTraffic,
+                    basicSetup: {
+                        apluPush: formData.apluPush,
+                        adsterraAd: formData.adsterraAd,
+                        taboolaContact: formData.taboolaContact
+                    },
+                    wpLogin: {
+                        username: formData.wpUsername,
+                        password: formData.wpPassword
+                    }
+                })
             })
 
             if (response.ok) {
                 const newDomain = await response.json()
                 setDomains([...domains, newDomain])
                 setIsModalOpen(false)
-                setFormData({ name: '', url: '' })
+                setFormData({
+                    name: '', url: '',
+                    googleTraffic: false,
+                    apluPush: false, adsterraAd: false, taboolaContact: false,
+                    wpUsername: '', wpPassword: ''
+                })
             }
         } catch (error) {
             console.error('Failed to add domain:', error)
@@ -133,6 +157,102 @@ function Dashboard() {
                             onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                             required
                         />
+                    </div>
+
+                    {/* Google Traffic Section */}
+                    <div className="modal-section">
+                        <label className="setup-checkbox-row modal-checkbox-row">
+                            <input
+                                type="checkbox"
+                                checked={formData.googleTraffic}
+                                onChange={(e) => setFormData({ ...formData, googleTraffic: e.target.checked })}
+                                className="setup-checkbox"
+                            />
+                            <span className="setup-checkbox-label">
+                                <span className={`setup-status-dot ${formData.googleTraffic ? 'dot-green' : 'dot-gray'}`}></span>
+                                Getting Google Traffic?
+                            </span>
+                        </label>
+
+                        {formData.googleTraffic && (
+                            <div className="modal-sub-checks">
+                                <label className="setup-checkbox-row">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.apluPush}
+                                        onChange={(e) => setFormData({ ...formData, apluPush: e.target.checked })}
+                                        className="setup-checkbox"
+                                    />
+                                    <span className="setup-checkbox-label">
+                                        <span className={`setup-status-dot ${formData.apluPush ? 'dot-green' : 'dot-red'}`}></span>
+                                        Aplu Push Configured
+                                    </span>
+                                </label>
+                                <label className="setup-checkbox-row">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.adsterraAd}
+                                        onChange={(e) => setFormData({ ...formData, adsterraAd: e.target.checked })}
+                                        className="setup-checkbox"
+                                    />
+                                    <span className="setup-checkbox-label">
+                                        <span className={`setup-status-dot ${formData.adsterraAd ? 'dot-green' : 'dot-red'}`}></span>
+                                        Adsterra Ad Code
+                                    </span>
+                                </label>
+                                <label className="setup-checkbox-row">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.taboolaContact}
+                                        onChange={(e) => setFormData({ ...formData, taboolaContact: e.target.checked })}
+                                        className="setup-checkbox"
+                                    />
+                                    <span className="setup-checkbox-label">
+                                        <span className={`setup-status-dot ${formData.taboolaContact ? 'dot-green' : 'dot-red'}`}></span>
+                                        Taboola Contact Pages
+                                    </span>
+                                </label>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* WP Login Section */}
+                    <div className="modal-section">
+                        <div className="modal-section-title">🔐 WP Admin Login</div>
+                        {formData.url && (
+                            <p className="wp-admin-preview">
+                                Admin URL: <span>{formData.url.replace(/\/$/, '')}/wp-admin</span>
+                            </p>
+                        )}
+                        <div className="input-group">
+                            <label className="input-label">Username</label>
+                            <input
+                                className="input"
+                                type="text"
+                                placeholder="admin"
+                                value={formData.wpUsername}
+                                onChange={(e) => setFormData({ ...formData, wpUsername: e.target.value })}
+                            />
+                        </div>
+                        <div className="input-group">
+                            <label className="input-label">Password</label>
+                            <div className="password-input-wrapper">
+                                <input
+                                    className="input"
+                                    type={showWpPassword ? 'text' : 'password'}
+                                    placeholder="••••••••"
+                                    value={formData.wpPassword}
+                                    onChange={(e) => setFormData({ ...formData, wpPassword: e.target.value })}
+                                />
+                                <button
+                                    type="button"
+                                    className="password-toggle-btn"
+                                    onClick={() => setShowWpPassword(!showWpPassword)}
+                                >
+                                    {showWpPassword ? '🙈' : '👁️'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="modal-actions">

@@ -97,6 +97,9 @@ const store = {
     urls: {}, // { domainId: [urls] } - legacy, keeping for compatibility
     sessions: {}, // { "domainId_YYYY-MM-DD": { date, articles[], focusGroups[] } }
     analyticsCache: {}, // { urlId: { data, timestamp } }
+    blueprint: {
+        countries: [] // { id, name, articles: [{ id, url, title, image }] }
+    },
     settings: {
         plausibleApiKey: config.plausibleApiKey
     }
@@ -325,16 +328,30 @@ app.get('/api/domains', (req, res) => {
 
 // Create new domain
 app.post('/api/domains', (req, res) => {
-    const { name, url } = req.body;
+    const { name, url, googleTraffic, basicSetup, wpLogin } = req.body;
 
     if (!name || !url) {
         return res.status(400).json({ error: 'Name and URL are required' });
     }
 
+    // Auto-generate wp-admin link
+    const cleanUrl = url.replace(/\/$/, '');
+
     const domain = {
         id: uuidv4(),
         name,
         url,
+        googleTraffic: googleTraffic || false,
+        basicSetup: {
+            apluPush: basicSetup?.apluPush || false,
+            adsterraAd: basicSetup?.adsterraAd || false,
+            taboolaContact: basicSetup?.taboolaContact || false
+        },
+        wpLogin: {
+            adminUrl: `${cleanUrl}/wp-admin`,
+            username: wpLogin?.username || '',
+            password: wpLogin?.password || ''
+        },
         createdAt: new Date().toISOString(),
         urlCount: 0
     };
@@ -372,6 +389,33 @@ app.delete('/api/domains/:id', (req, res) => {
     delete store.urls[req.params.id];
 
     res.status(204).send();
+});
+
+// Update domain basic setup
+app.patch('/api/domains/:id/basic-setup', (req, res) => {
+    const domain = store.domains.find(d => d.id === req.params.id);
+    if (!domain) {
+        return res.status(404).json({ error: 'Domain not found' });
+    }
+
+    const { googleTraffic, basicSetup, wpLogin } = req.body;
+
+    if (googleTraffic !== undefined) domain.googleTraffic = googleTraffic;
+
+    if (basicSetup) {
+        if (!domain.basicSetup) domain.basicSetup = {};
+        if (basicSetup.apluPush !== undefined) domain.basicSetup.apluPush = basicSetup.apluPush;
+        if (basicSetup.adsterraAd !== undefined) domain.basicSetup.adsterraAd = basicSetup.adsterraAd;
+        if (basicSetup.taboolaContact !== undefined) domain.basicSetup.taboolaContact = basicSetup.taboolaContact;
+    }
+
+    if (wpLogin) {
+        if (!domain.wpLogin) domain.wpLogin = {};
+        if (wpLogin.username !== undefined) domain.wpLogin.username = wpLogin.username;
+        if (wpLogin.password !== undefined) domain.wpLogin.password = wpLogin.password;
+    }
+
+    res.json(domain);
 });
 
 // ============ URL ROUTES ============
@@ -1115,6 +1159,116 @@ app.post('/api/settings', (req, res) => {
         hasApiKey: !!store.settings.plausibleApiKey,
         message: 'Settings updated'
     });
+});
+
+// ============ BLUEPRINT ROUTES ============
+
+// Get all countries
+app.get('/api/blueprint/countries', (req, res) => {
+    const countries = store.blueprint.countries.map(c => ({
+        ...c,
+        articleCount: c.articles.length
+    }));
+    res.json(countries);
+});
+
+// Add a new country
+app.post('/api/blueprint/countries', (req, res) => {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Country name is required' });
+
+    // Check for duplicates
+    const exists = store.blueprint.countries.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (exists) return res.status(409).json({ error: 'Country already exists' });
+
+    const country = {
+        id: uuidv4(),
+        name,
+        articles: [],
+        createdAt: new Date().toISOString()
+    };
+
+    store.blueprint.countries.push(country);
+    res.status(201).json({ ...country, articleCount: 0 });
+});
+
+// Delete a country
+app.delete('/api/blueprint/countries/:id', (req, res) => {
+    const index = store.blueprint.countries.findIndex(c => c.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: 'Country not found' });
+
+    store.blueprint.countries.splice(index, 1);
+    res.status(204).send();
+});
+
+// Get articles for a country
+app.get('/api/blueprint/countries/:id/articles', (req, res) => {
+    const country = store.blueprint.countries.find(c => c.id === req.params.id);
+    if (!country) return res.status(404).json({ error: 'Country not found' });
+
+    res.json(country.articles);
+});
+
+// Add article to a country
+app.post('/api/blueprint/countries/:id/articles', async (req, res) => {
+    const country = store.blueprint.countries.find(c => c.id === req.params.id);
+    if (!country) return res.status(404).json({ error: 'Country not found' });
+
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    // Fetch OG data
+    const ogData = await fetchOgData(url);
+
+    const article = {
+        id: uuidv4(),
+        url,
+        title: ogData.title || url,
+        image: ogData.image || null,
+        createdAt: new Date().toISOString()
+    };
+
+    country.articles.push(article);
+    res.status(201).json(article);
+});
+
+// Bulk add articles to a country
+app.post('/api/blueprint/countries/:id/articles/bulk', async (req, res) => {
+    const country = store.blueprint.countries.find(c => c.id === req.params.id);
+    if (!country) return res.status(404).json({ error: 'Country not found' });
+
+    const { urls } = req.body;
+    if (!urls || !Array.isArray(urls) || urls.length === 0) {
+        return res.status(400).json({ error: 'URLs array is required' });
+    }
+
+    const newArticles = [];
+    for (const url of urls) {
+        const ogData = await fetchOgData(url);
+        const article = {
+            id: uuidv4(),
+            url,
+            title: ogData.title || url,
+            image: ogData.image || null,
+            createdAt: new Date().toISOString()
+        };
+        country.articles.push(article);
+        newArticles.push(article);
+    }
+
+    res.status(201).json(newArticles);
+});
+
+// Delete article from a country
+app.delete('/api/blueprint/countries/:countryId/articles/:articleId', (req, res) => {
+    const country = store.blueprint.countries.find(c => c.id === req.params.countryId);
+    if (!country) return res.status(404).json({ error: 'Country not found' });
+
+    const articleIndex = country.articles.findIndex(a => a.id === req.params.articleId);
+    if (articleIndex === -1) return res.status(404).json({ error: 'Article not found' });
+
+    country.articles.splice(articleIndex, 1);
+    res.status(204).send();
 });
 
 // ============ START SERVER ============

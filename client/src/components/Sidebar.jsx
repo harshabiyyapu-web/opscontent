@@ -14,7 +14,15 @@ function Sidebar({ activeTab, onTabChange }) {
                 {/* Main Navigation */}
                 <div className="nav-section">
                     <Link to="/" className={`nav-item ${location.pathname === '/' ? 'active' : ''}`}>
-                        <span>Dashboard</span>
+                        <span>📊 Dashboard</span>
+                    </Link>
+                </div>
+
+                {/* Harsha Operations */}
+                <div className="nav-section">
+                    <div className="nav-section-title">Harsha Operations</div>
+                    <Link to="/blueprint" className={`nav-item ${location.pathname === '/blueprint' ? 'active' : ''}`}>
+                        <span>🗺️ Blueprint</span>
                     </Link>
                 </div>
 
@@ -40,12 +48,18 @@ function Sidebar({ activeTab, onTabChange }) {
                         >
                             <span>📊 Tracking</span>
                         </button>
+                        <button
+                            className={`nav-item ${activeTab === 'setup' ? 'active' : ''}`}
+                            onClick={() => onTabChange?.('setup')}
+                        >
+                            <span>⚙️ Setup</span>
+                        </button>
                     </div>
                 )}
             </nav>
 
             <div className="sidebar-footer">
-                <div className="sidebar-version">v1.0</div>
+                <div className="sidebar-version">v2.0</div>
             </div>
         </aside>
     )
