@@ -1114,30 +1114,56 @@ app.get('/api/domains/:id/analytics-groups', async (req, res) => {
 
     const siteId = getSiteIdFromUrl(domain.url);
 
-    // Fetch Plausible realtime data for each article if requested
+    // Fetch Plausible realtime data for each article — PARALLEL for speed
     const analyticsMap = {};
     if (realtime === 'true' && apiKey) {
-        for (const group of session.contentGroups) {
-            for (const article of group.articles) {
-                try {
-                    const cached = getCachedAnalytics(article.id);
-                    if (cached) {
-                        analyticsMap[article.id] = cached;
-                        continue;
+        const allArticles = session.contentGroups.flatMap(g => g.articles);
+
+        // Also collect all source URLs from redirections for analytics
+        const allSourceUrls = (session.redirectionSets || []).flatMap(r =>
+            (r.sourceUrls || []).map(s => ({ id: s.id, url: s.url, title: s.title }))
+        );
+        const allItems = [...allArticles, ...allSourceUrls];
+
+        // Separate cached vs uncached
+        const uncached = [];
+        for (const item of allItems) {
+            const cached = getCachedAnalytics(item.id);
+            if (cached) {
+                analyticsMap[item.id] = cached;
+            } else {
+                uncached.push(item);
+            }
+        }
+
+        // Fetch all uncached in parallel (max 10 concurrent)
+        if (uncached.length > 0) {
+            const batchSize = 10;
+            for (let i = 0; i < uncached.length; i += batchSize) {
+                const batch = uncached.slice(i, i + batchSize);
+                const results = await Promise.allSettled(
+                    batch.map(item =>
+                        PlausibleService.getUrlAnalytics(apiKey, siteId, item.url)
+                            .then(analytics => ({ item, analytics }))
+                    )
+                );
+                for (const result of results) {
+                    if (result.status === 'fulfilled') {
+                        const { item, analytics } = result.value;
+                        const processedData = {
+                            ...analytics,
+                            percentChange: PlausibleService.calculatePercentageChange(
+                                analytics.totals?.visitors || 0,
+                                analytics.previousPeriod?.visitors || 0
+                            ),
+                            lastUpdated: new Date().toISOString()
+                        };
+                        setCachedAnalytics(item.id, processedData);
+                        analyticsMap[item.id] = processedData;
+                    } else {
+                        const item = batch[results.indexOf(result)];
+                        analyticsMap[item.id] = { error: result.reason?.message, realtime: { visitors: 0 }, totals: {}, hourlyData: [] };
                     }
-                    const analytics = await PlausibleService.getUrlAnalytics(apiKey, siteId, article.url);
-                    const processedData = {
-                        ...analytics,
-                        percentChange: PlausibleService.calculatePercentageChange(
-                            analytics.totals?.visitors || 0,
-                            analytics.previousPeriod?.visitors || 0
-                        ),
-                        lastUpdated: new Date().toISOString()
-                    };
-                    setCachedAnalytics(article.id, processedData);
-                    analyticsMap[article.id] = processedData;
-                } catch (error) {
-                    analyticsMap[article.id] = { error: error.message, realtime: { visitors: 0 }, totals: {}, hourlyData: [] };
                 }
             }
         }
@@ -1149,6 +1175,19 @@ app.get('/api/domains/:id/analytics-groups', async (req, res) => {
             r.redirectedArticleIds.some(id => groupArticleIds.includes(id)) || r.groupId === group.id
         );
 
+        // Collect source URLs with analytics for this group's redirections
+        const sourceUrlAnalytics = relatedRedirections.flatMap(redir =>
+            (redir.sourceUrls || []).map(s => ({
+                ...s,
+                isSourceUrl: true,
+                indexed: true,
+                indexedAt: null,
+                redirectionName: redir.name,
+                redirectionId: redir.id,
+                analytics: analyticsMap[s.id] || null
+            }))
+        );
+
         return {
             country: group.country,
             countryFlag: group.countryFlag,
@@ -1158,6 +1197,7 @@ app.get('/api/domains/:id/analytics-groups', async (req, res) => {
                 analytics: analyticsMap[a.id] || null,
                 trafficSnapshots: a.trafficSnapshots || []
             })),
+            sourceUrlAnalytics,
             redirectionSets: relatedRedirections
         };
     });

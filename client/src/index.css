@@ -2875,6 +2875,15 @@ a:hover {
   background: rgba(59, 130, 246, 0.06);
 }
 
+.content-article-row.article-indexed {
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.08), rgba(34, 197, 94, 0.04));
+  border-left: 3px solid rgba(22, 163, 74, 0.4);
+}
+
+.content-article-row.article-indexed:hover {
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.12), rgba(34, 197, 94, 0.06));
+}
+
 .content-article-row:last-child {
   border-bottom: none;
 }
@@ -4837,6 +4846,52 @@ a:hover {
 .analytics-article-card.article-indexed {
   background: linear-gradient(135deg, rgba(22, 163, 74, 0.06), rgba(34, 197, 94, 0.04));
   border-color: rgba(22, 163, 74, 0.2);
+}
+
+/* Source URL analytics card — orange/amber bg */
+.analytics-article-card.source-url-card {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(251, 191, 36, 0.04));
+  border-color: rgba(245, 158, 11, 0.3);
+  border-left: 4px solid rgba(245, 158, 11, 0.6);
+}
+
+.source-url-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.12);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  letter-spacing: 0.02em;
+}
+
+.source-url-indexed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+}
+
+.source-url-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #d97706;
+  padding: 12px 0 8px;
+  margin-top: 8px;
+  border-top: 1px dashed rgba(245, 158, 11, 0.2);
 }
 
 /* Indexed badge */
