@@ -5,6 +5,7 @@ function TabNavigation({ activeTab, onTabChange }) {
         { id: 'articles', label: '📝 Articles', color: null },
         { id: 'redirection', label: '🔀 Redirection', color: '#3b82f6' },
         { id: 'analytics', label: '📊 Analytics', color: '#10b981' },
+        { id: 'report', label: '📋 Report', color: '#8b5cf6' },
         { id: 'setup', label: '⚙️ Setup', color: '#6b7280' }
     ];
 

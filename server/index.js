@@ -980,6 +980,101 @@ app.patch('/api/domains/:id/session/mark-indexed', (req, res) => {
     res.json({ marked, count: marked.length });
 });
 
+// Report endpoint — aggregated data for date range
+app.get('/api/domains/:id/report', async (req, res) => {
+    const { id: domainId } = req.params;
+    const { from, to } = req.query;
+    const domain = store.domains.find(d => d.id === domainId);
+    if (!domain) return res.status(404).json({ error: 'Domain not found' });
+
+    // Generate array of dates from 'from' to 'to'
+    const dates = [];
+    const startDate = new Date(from || getTodayDateString());
+    const endDate = new Date(to || getTodayDateString());
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        dates.push(d.toISOString().split('T')[0]);
+    }
+
+    let totalArticles = 0;
+    let totalIndexed = 0;
+    let totalRedirections = 0;
+    const dailyData = [];
+
+    for (const dateStr of dates) {
+        const sessionKey = `${domainId}_${dateStr}`;
+        const session = store.sessions[sessionKey];
+        if (!session) {
+            dailyData.push({ date: dateStr, articles: 0, indexed: 0, redirections: 0, traffic: null });
+            continue;
+        }
+
+        let dayArticles = 0;
+        let dayIndexed = 0;
+        for (const group of (session.contentGroups || [])) {
+            dayArticles += group.articles.length;
+            dayIndexed += group.articles.filter(a => a.indexed).length;
+        }
+        const dayRedirections = (session.redirectionSets || []).length;
+
+        totalArticles += dayArticles;
+        totalIndexed += dayIndexed;
+        totalRedirections += dayRedirections;
+
+        // Try to get traffic from Plausible for this date
+        let traffic = null;
+        if (domain.plausibleDomain) {
+            try {
+                const plausibleRes = await fetch('https://plausible.io/api/v2/query', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.PLAUSIBLE_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        site_id: domain.plausibleDomain,
+                        metrics: ['visitors', 'pageviews'],
+                        date_range: [dateStr, dateStr],
+                        dimensions: ['visit:source']
+                    })
+                });
+                if (plausibleRes.ok) {
+                    const pData = await plausibleRes.json();
+                    const results = pData.results || [];
+                    let google = 0, direct = 0, other = 0, totalVisitors = 0, totalPv = 0;
+                    for (const row of results) {
+                        const src = (row.dimensions?.[0] || '').toLowerCase();
+                        const vis = row.metrics?.[0] || 0;
+                        const pv = row.metrics?.[1] || 0;
+                        totalVisitors += vis;
+                        totalPv += pv;
+                        if (src === 'google') google += vis;
+                        else if (src === 'direct / none' || src === '') direct += vis;
+                        else other += vis;
+                    }
+                    traffic = { visitors: totalVisitors, pageviews: totalPv, google, direct, other };
+                }
+            } catch (e) { /* plausible unavailable */ }
+        }
+
+        dailyData.push({
+            date: dateStr,
+            articles: dayArticles,
+            indexed: dayIndexed,
+            redirections: dayRedirections,
+            traffic
+        });
+    }
+
+    res.json({
+        domainId,
+        domainName: domain.name,
+        from: dates[0],
+        to: dates[dates.length - 1],
+        summary: { totalArticles, totalIndexed, totalRedirections },
+        dailyData
+    });
+});
+
 // ---- Legacy compat routes ----
 
 app.get('/api/domains/:id/sessions', (req, res) => {

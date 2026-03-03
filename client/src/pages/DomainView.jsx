@@ -8,6 +8,7 @@ import ArticleDetailModal from '../components/ArticleDetailModal'
 import DateSelector from '../components/DateSelector'
 import TabNavigation from '../components/TabNavigation'
 import BasicSetup from '../components/BasicSetup'
+import ReportSection from '../components/ReportSection'
 
 function DomainView({ activeTab, setActiveTab }) {
     const { id } = useParams()
@@ -625,12 +626,22 @@ function DomainView({ activeTab, setActiveTab }) {
 
                                                         {/* Saved Snapshots */}
                                                         {snapshots.length > 0 && (
-                                                            <div className="snapshot-list">
+                                                            <div className="snapshot-list-improved">
+                                                                <div className="snapshot-list-label">📸 Snapshots ({selectedDate})</div>
                                                                 {snapshots.map(snap => (
-                                                                    <div key={snap.id} className="snapshot-item">
-                                                                        <span className="snapshot-time">🕐 {snap.timestamp}</span>
-                                                                        <span className="snapshot-visitors"><strong>{snap.visitors}</strong> live</span>
-                                                                        <span className="snapshot-views">{snap.pageviews} views</span>
+                                                                    <div key={snap.id} className="snapshot-card">
+                                                                        <div className="snapshot-card-time">🕐 {snap.timestamp}</div>
+                                                                        <div className="snapshot-card-date">{selectedDate}</div>
+                                                                        <div className="snapshot-card-stats">
+                                                                            <div className="snapshot-stat">
+                                                                                <span className="snapshot-stat-val">{snap.visitors}</span>
+                                                                                <span className="snapshot-stat-lbl">Live</span>
+                                                                            </div>
+                                                                            <div className="snapshot-stat">
+                                                                                <span className="snapshot-stat-val">{snap.pageviews}</span>
+                                                                                <span className="snapshot-stat-lbl">Views</span>
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
                                                                 ))}
                                                             </div>
@@ -706,6 +717,11 @@ function DomainView({ activeTab, setActiveTab }) {
                         selectedDate={selectedDate}
                     />
                 </>
+            )}
+
+            {/* ===== REPORT TAB ===== */}
+            {activeTab === 'report' && (
+                <ReportSection domainId={id} />
             )}
 
             {/* ===== SETUP TAB ===== */}
