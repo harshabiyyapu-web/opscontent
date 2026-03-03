@@ -703,6 +703,8 @@ app.post('/api/domains/:id/session/groups', async (req, res) => {
             url,
             title: ogData.title || url,
             image: ogData.image,
+            indexed: false,
+            indexedAt: null,
             indexStatus: 'unchecked',
             addedAt: new Date().toISOString(),
             pushStatus: { given: false, siteName: '', email: '', time: '', givenAt: null }
@@ -745,6 +747,8 @@ app.post('/api/domains/:id/session/groups/:gid/articles', async (req, res) => {
             url,
             title: ogData.title || url,
             image: ogData.image,
+            indexed: false,
+            indexedAt: null,
             indexStatus: 'unchecked',
             addedAt: new Date().toISOString(),
             pushStatus: { given: false, siteName: '', email: '', time: '', givenAt: null }
@@ -789,6 +793,7 @@ app.patch('/api/domains/:id/session/groups/:gid/articles/:aid/indexed', (req, re
     if (!group) return res.status(404).json({ error: 'Group not found' });
     const article = group.articles.find(a => a.id === aid);
     if (!article) return res.status(404).json({ error: 'Article not found' });
+    article.indexed = true;
     article.indexStatus = 'indexed';
     article.indexedAt = new Date().toISOString();
     res.json(article);
@@ -1024,10 +1029,10 @@ app.get('/api/domains/:id/report', async (req, res) => {
         let traffic = null;
         if (domain.plausibleDomain) {
             try {
-                const plausibleRes = await fetch('https://plausible.io/api/v2/query', {
+                const plausibleRes = await fetch(`${config.plausibleBaseUrl}/api/v2/query`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${process.env.PLAUSIBLE_API_KEY}`,
+                        'Authorization': `Bearer ${store.settings.plausibleApiKey}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -1207,6 +1212,8 @@ app.get('/api/domains/:id/session/article-detail/:aid', async (req, res) => {
         title: foundArticle.title,
         url: foundArticle.url,
         image: foundArticle.image,
+        indexed: foundArticle.indexed || false,
+        indexedAt: foundArticle.indexedAt || null,
         country: foundGroup.country,
         countryFlag: foundGroup.countryFlag,
         addedAt: foundArticle.addedAt || foundArticle.createdAt || null,
