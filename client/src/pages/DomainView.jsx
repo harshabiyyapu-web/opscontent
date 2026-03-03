@@ -325,7 +325,7 @@ function DomainView({ activeTab, setActiveTab }) {
                     </div>
                     <p className="page-subtitle">{domain.url}</p>
                 </div>
-                <DateSelector selectedDate={selectedDate} onChange={setSelectedDate} />
+                <DateSelector selectedDate={selectedDate} onDateChange={setSelectedDate} />
             </div>
 
             {/* Tabs */}
