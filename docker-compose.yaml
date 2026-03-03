@@ -5,7 +5,6 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: opscontent-backend
     restart: unless-stopped
     expose:
       - "3001"
@@ -14,25 +13,16 @@ services:
       - PLAUSIBLE_API_KEY=${PLAUSIBLE_API_KEY:-}
     volumes:
       - opscontent-data:/app/data
-    networks:
-      - opscontent-network
 
   frontend:
     build:
       context: ./client
       dockerfile: Dockerfile
-    container_name: opscontent-frontend
     restart: unless-stopped
     expose:
       - "80"
     depends_on:
       - backend
-    networks:
-      - opscontent-network
-
-networks:
-  opscontent-network:
-    driver: bridge
 
 volumes:
   opscontent-data:
