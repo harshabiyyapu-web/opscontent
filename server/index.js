@@ -453,6 +453,11 @@ cron.schedule('*/30 * * * *', () => {
 // ============ DOMAIN ROUTES ============
 
 // Get all domains
+// Health check
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime(), domains: store.domains.length, sessions: Object.keys(store.sessions).length });
+});
+
 app.get('/api/domains', (req, res) => {
     res.json(store.domains);
 });

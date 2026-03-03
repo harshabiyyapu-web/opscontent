@@ -23,8 +23,8 @@ services:
       dockerfile: Dockerfile
     container_name: opscontent-frontend
     restart: unless-stopped
-    expose:
-      - "80"
+    ports:
+      - "80:80"
     depends_on:
       - backend
     networks:
