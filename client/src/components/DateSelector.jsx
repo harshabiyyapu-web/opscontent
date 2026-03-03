@@ -40,6 +40,7 @@ function DateSelector({ selectedDate, onDateChange }) {
                         Yesterday
                     </button>
                     <div className="date-divider"></div>
+                    <div style={{ padding: '6px 12px 2px', fontSize: '11px', fontWeight: 600, color: '#888', textTransform: 'uppercase' }}>Pick a date</div>
                     <input
                         type="date"
                         className="date-picker-input"

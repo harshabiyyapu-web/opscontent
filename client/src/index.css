@@ -1622,13 +1622,12 @@ a:hover {
   top: 100%;
   right: 0;
   margin-top: var(--spacing-xs);
-  background: var(--color-bg-card);
+  background: #ffffff;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
-  min-width: 160px;
+  min-width: 180px;
   z-index: 100;
-  overflow: hidden;
 }
 
 .date-option {
@@ -1659,12 +1658,14 @@ a:hover {
 }
 
 .date-picker-input {
+  display: block;
   width: 100%;
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: 10px var(--spacing-md);
   border: none;
   border-top: 1px solid var(--color-border);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
   font-size: var(--font-size-sm);
-  background: #ffffff;
+  background: #f8f8f8;
   color: #1a1a2e;
   cursor: pointer;
   box-sizing: border-box;
