@@ -1664,6 +1664,10 @@ a:hover {
   border: none;
   border-top: 1px solid var(--color-border);
   font-size: var(--font-size-sm);
+  background: #ffffff;
+  color: #1a1a2e;
+  cursor: pointer;
+  box-sizing: border-box;
 }
 
 /* ============================================
