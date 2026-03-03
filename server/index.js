@@ -960,6 +960,26 @@ app.patch('/api/domains/:id/session/push/article/:aid', (req, res) => {
     res.status(404).json({ error: 'Article not found' });
 });
 
+// Mark article(s) as indexed
+app.patch('/api/domains/:id/session/mark-indexed', (req, res) => {
+    const { id: domainId } = req.params;
+    const { articleIds, date } = req.body;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+
+    const marked = [];
+    for (const group of session.contentGroups) {
+        for (const article of group.articles) {
+            if (articleIds.includes(article.id)) {
+                article.indexed = true;
+                article.indexedAt = new Date().toISOString();
+                marked.push(article.id);
+            }
+        }
+    }
+
+    res.json({ marked, count: marked.length });
+});
+
 // ---- Legacy compat routes ----
 
 app.get('/api/domains/:id/sessions', (req, res) => {

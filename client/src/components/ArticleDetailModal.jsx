@@ -38,6 +38,12 @@ function ArticleDetailModal({ isOpen, onClose, article, domainId, selectedDate }
                             <a href={article.url} target="_blank" rel="noopener noreferrer" className="detail-article-url">
                                 🔗 {article.url}
                             </a>
+                            {article.indexed && (
+                                <div style={{ marginTop: 6 }}>
+                                    <span className="indexed-badge">✅ Indexed</span>
+                                    {article.indexedAt && <span style={{ fontSize: '0.75rem', color: '#a89272', marginLeft: 8 }}>at {new Date(article.indexedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>}
+                                </div>
+                            )}
                         </div>
 
                         <div className="detail-card">
@@ -102,7 +108,12 @@ function ArticleDetailModal({ isOpen, onClose, article, domainId, selectedDate }
                                         <div className="detail-timeline-item"><span className="dt-icon">📅</span><span className="dt-label">Given At</span><span className="dt-value">{new Date(d.pushStatus.givenAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span></div>
                                     </div>
                                 ) : d.pushStatus.pushPassed ? (
-                                    <div className="detail-push-badge passed">✓ Push Passed</div>
+                                    <div>
+                                        <div className="detail-push-badge passed" style={{ background: 'rgba(234, 179, 8, 0.12)', color: '#b45309' }}>✓ Push Passed</div>
+                                        {d.pushStatus.passedAt && (
+                                            <div style={{ fontSize: '0.8rem', color: '#a89272', marginTop: 6 }}>Passed at: {new Date(d.pushStatus.passedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</div>
+                                        )}
+                                    </div>
                                 ) : (
                                     <div className="detail-push-badge none">No push yet</div>
                                 )}

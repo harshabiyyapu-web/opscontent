@@ -39,7 +39,8 @@ function DomainView({ activeTab, setActiveTab }) {
     const [analyticsPushTarget, setAnalyticsPushTarget] = useState(null)
     const [pushDetailOpen, setPushDetailOpen] = useState(null)
     const [articleSearchQuery, setArticleSearchQuery] = useState('')
-    const [articleDetailOpen, setArticleDetailOpen] = useState(null) // article object
+    const [articleDetailOpen, setArticleDetailOpen] = useState(null)
+    const [selectedForIndex, setSelectedForIndex] = useState(new Set())
 
     // Fetch session
     const fetchSession = useCallback(async () => {
@@ -113,6 +114,54 @@ function DomainView({ activeTab, setActiveTab }) {
         } catch (e) { console.error(e) }
     }
 
+    // Google index check — open site:url in new tab
+    const handleGoogleCheck = (url) => {
+        window.open(`https://www.google.com/search?q=site:${encodeURIComponent(url)}`, '_blank')
+    }
+
+    // Bulk Google check — opens multiple tabs
+    const handleBulkGoogleCheck = () => {
+        const allArticles = (analyticsData || []).flatMap(g => g.articles)
+        const selected = allArticles.filter(a => selectedForIndex.has(a.id))
+        selected.forEach(a => {
+            window.open(`https://www.google.com/search?q=site:${encodeURIComponent(a.url)}`, '_blank')
+        })
+    }
+
+    // Mark indexed
+    const handleMarkIndexed = async (articleIds) => {
+        try {
+            await fetch(`/api/domains/${id}/session/mark-indexed`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ articleIds, date: selectedDate })
+            })
+            fetchSession()
+            fetchAnalytics()
+            setSelectedForIndex(new Set())
+        } catch (e) { console.error(e) }
+    }
+
+    // Toggle select for index
+    const toggleSelectForIndex = (articleId) => {
+        setSelectedForIndex(prev => {
+            const next = new Set(prev)
+            if (next.has(articleId)) next.delete(articleId)
+            else next.add(articleId)
+            return next
+        })
+    }
+
+    // Select all articles for index
+    const selectAllForIndex = () => {
+        const allIds = (analyticsData || []).flatMap(g => g.articles.map(a => a.id))
+        if (selectedForIndex.size === allIds.length) {
+            setSelectedForIndex(new Set())
+        } else {
+            setSelectedForIndex(new Set(allIds))
+        }
+    }
+
     useEffect(() => { fetchDomain() }, [fetchDomain])
     useEffect(() => { fetchSession() }, [fetchSession])
 
@@ -177,25 +226,6 @@ function DomainView({ activeTab, setActiveTab }) {
                     g.id === groupId ? { ...g, articles: g.articles.filter(a => a.id !== articleId) } : g
                 )
             }))
-        } catch (error) { console.error(error) }
-    }
-
-    const handleMarkIndexed = async (groupId, articleId) => {
-        try {
-            const response = await fetch(`/api/domains/${id}/session/groups/${groupId}/articles/${articleId}/indexed`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date: selectedDate })
-            })
-            if (response.ok) {
-                const updated = await response.json()
-                setSession(prev => ({
-                    ...prev,
-                    contentGroups: prev.contentGroups.map(g =>
-                        g.id === groupId ? { ...g, articles: g.articles.map(a => a.id === articleId ? updated : a) } : g
-                    )
-                }))
-            }
         } catch (error) { console.error(error) }
     }
 
@@ -403,6 +433,19 @@ function DomainView({ activeTab, setActiveTab }) {
                                             </button>
                                         </div>
 
+                                        {/* Bulk Actions Bar */}
+                                        {selectedForIndex.size > 0 && (
+                                            <div className="bulk-actions-bar">
+                                                <label className="bulk-select-all">
+                                                    <input type="checkbox" onChange={selectAllForIndex} checked={selectedForIndex.size === (analyticsData || []).flatMap(g => g.articles).length} />
+                                                    Select All
+                                                </label>
+                                                <span className="bulk-count">{selectedForIndex.size} selected</span>
+                                                <button className="btn btn-bulk-google" onClick={handleBulkGoogleCheck}>🔍 Bulk Google Check</button>
+                                                <button className="btn btn-bulk-indexed" onClick={() => handleMarkIndexed([...selectedForIndex])}>✅ Bulk Mark Indexed</button>
+                                            </div>
+                                        )}
+
                                         <div className="analytics-articles-list">
                                             {filteredArticles.map(article => {
                                                 const a = article.analytics || {}
@@ -414,9 +457,18 @@ function DomainView({ activeTab, setActiveTab }) {
                                                 const sources = a.sources || []
 
                                                 return (
-                                                    <div key={article.id} className="analytics-article-card">
+                                                    <div key={article.id} className={`analytics-article-card ${article.indexed ? 'article-indexed' : ''}`}>
                                                         {/* Article Header with Image */}
                                                         <div className="analytics-article-header">
+                                                            {/* Checkbox for bulk select */}
+                                                            <div className="index-checkbox-wrap">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="index-checkbox"
+                                                                    checked={selectedForIndex.has(article.id)}
+                                                                    onChange={() => toggleSelectForIndex(article.id)}
+                                                                />
+                                                            </div>
                                                             <div className="analytics-article-img-wrap">
                                                                 {article.image ? (
                                                                     <img src={article.image} alt="" className="analytics-article-img" onError={e => { e.target.style.display = 'none' }} />
@@ -427,10 +479,21 @@ function DomainView({ activeTab, setActiveTab }) {
                                                             <div className="analytics-article-info-col">
                                                                 <h4 className="analytics-article-title analytics-article-clickable" onClick={() => setArticleDetailOpen(article)}>
                                                                     {article.title}
+                                                                    {article.indexed && <span className="indexed-badge">✅ Indexed</span>}
                                                                 </h4>
-                                                                <a href={article.url} target="_blank" rel="noopener noreferrer" className="analytics-article-link">
-                                                                    {(() => { try { return new URL(article.url).hostname + new URL(article.url).pathname.slice(0, 30) } catch { return article.url.slice(0, 50) } })()}
-                                                                </a>
+                                                                <div className="article-url-row">
+                                                                    <a href={article.url} target="_blank" rel="noopener noreferrer" className="analytics-article-link">
+                                                                        {(() => { try { return new URL(article.url).hostname + new URL(article.url).pathname.slice(0, 30) } catch { return article.url.slice(0, 50) } })()}
+                                                                    </a>
+                                                                    <button className="btn-google-check" onClick={() => handleGoogleCheck(article.url)} title="Check if indexed on Google">
+                                                                        🔍
+                                                                    </button>
+                                                                    {!article.indexed && (
+                                                                        <button className="btn-mark-indexed" onClick={() => handleMarkIndexed([article.id])} title="Mark as indexed">
+                                                                            ✅
+                                                                        </button>
+                                                                    )}
+                                                                </div>
                                                                 <div className="analytics-push-row">
                                                                     {article.pushStatus?.given ? (
                                                                         <span

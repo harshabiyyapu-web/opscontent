@@ -4823,3 +4823,213 @@ a:hover {
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
+
+/* ============================================
+   GOOGLE INDEX CHECK & INDEXED STATUS
+   ============================================ */
+
+/* Indexed article card — green bg */
+.analytics-article-card.article-indexed {
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.06), rgba(34, 197, 94, 0.04));
+  border-color: rgba(22, 163, 74, 0.2);
+}
+
+/* Indexed badge */
+.indexed-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* URL row with action icons */
+.article-url-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Google check button */
+.btn-google-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(224, 104, 24, 0.15);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+.btn-google-check:hover {
+  background: rgba(224, 104, 24, 0.08);
+  border-color: rgba(224, 104, 24, 0.3);
+  transform: scale(1.1);
+}
+
+/* Mark indexed button */
+.btn-mark-indexed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(22, 163, 74, 0.15);
+  border-radius: var(--radius-sm);
+  background: rgba(22, 163, 74, 0.05);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+.btn-mark-indexed:hover {
+  background: rgba(22, 163, 74, 0.12);
+  border-color: rgba(22, 163, 74, 0.3);
+  transform: scale(1.1);
+}
+
+/* Index checkbox */
+.index-checkbox-wrap {
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+}
+
+.index-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #e06818;
+  cursor: pointer;
+}
+
+/* ============================================
+   BULK ACTIONS BAR
+   ============================================ */
+
+.bulk-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(224, 104, 24, 0.06);
+  border: 1px solid rgba(224, 104, 24, 0.12);
+  border-radius: var(--radius-md);
+  margin: var(--spacing-sm) 0;
+}
+
+.bulk-select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.bulk-count {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.btn-bulk-google {
+  padding: 6px 14px;
+  background: rgba(59, 130, 246, 0.08);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-bulk-google:hover {
+  background: rgba(59, 130, 246, 0.14);
+  transform: translateY(-1px);
+}
+
+.btn-bulk-indexed {
+  padding: 6px 14px;
+  background: rgba(22, 163, 74, 0.08);
+  color: #16a34a;
+  border: 1px solid rgba(22, 163, 74, 0.2);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-bulk-indexed:hover {
+  background: rgba(22, 163, 74, 0.14);
+  transform: translateY(-1px);
+}
+
+/* ============================================
+   PUSH MODAL — WHITE BG
+   ============================================ */
+
+.push-modal-white {
+  background: #ffffff !important;
+  color: #1a1209 !important;
+}
+
+.push-modal-white .input-label {
+  color: #1a1209;
+}
+
+.push-modal-input {
+  background: #fef9f3 !important;
+  color: #1a1209 !important;
+  border-color: rgba(224, 104, 24, 0.2) !important;
+}
+
+.push-modal-input:focus {
+  border-color: #e06818 !important;
+  background: #ffffff !important;
+}
+
+/* ============================================
+   SOURCE vs REDIRECT CARD COLORS
+   ============================================ */
+
+/* Source items — light orange */
+.source-item {
+  background: rgba(224, 104, 24, 0.06) !important;
+  border-left: 3px solid rgba(224, 104, 24, 0.4);
+}
+
+/* Redirected items — light yellowgreen */
+.dest-item {
+  background: rgba(132, 204, 22, 0.06) !important;
+  border-left: 3px solid rgba(132, 204, 22, 0.4);
+}
+
+/* Source panel label */
+.redir-source-panel .source-label {
+  color: #c75515;
+  background: rgba(224, 104, 24, 0.08);
+}
+
+/* Dest panel label */
+.redir-dest-panel .dest-label {
+  color: #4d7c0f;
+  background: rgba(132, 204, 22, 0.08);
+}
+
+/* Push passed badge — yellow */
+.push-passed-badge {
+  background: rgba(234, 179, 8, 0.12) !important;
+  color: #b45309 !important;
+}
