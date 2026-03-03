@@ -38,10 +38,10 @@ function ArticleDetailModal({ isOpen, onClose, article, domainId, selectedDate }
                             <a href={article.url} target="_blank" rel="noopener noreferrer" className="detail-article-url">
                                 🔗 {article.url}
                             </a>
-                            {article.indexed && (
+                            {(article.indexed || d.indexed) && (
                                 <div style={{ marginTop: 6 }}>
                                     <span className="indexed-badge">✅ Indexed</span>
-                                    {article.indexedAt && <span style={{ fontSize: '0.75rem', color: '#a89272', marginLeft: 8 }}>at {new Date(article.indexedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>}
+                                    {(article.indexedAt || d.indexedAt) && <span style={{ fontSize: '0.75rem', color: '#a89272', marginLeft: 8 }}>at {new Date(article.indexedAt || d.indexedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>}
                                 </div>
                             )}
                         </div>
@@ -54,6 +54,13 @@ function ArticleDetailModal({ isOpen, onClose, article, domainId, selectedDate }
                                     <span className="dt-label">Added</span>
                                     <span className="dt-value">{d.addedAt ? new Date(d.addedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'N/A'}</span>
                                 </div>
+                                {(article.indexed || d.indexed) && (
+                                    <div className="detail-timeline-item">
+                                        <span className="dt-icon">✅</span>
+                                        <span className="dt-label">Indexed</span>
+                                        <span className="dt-value">{(article.indexedAt || d.indexedAt) ? new Date(article.indexedAt || d.indexedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Yes'}</span>
+                                    </div>
+                                )}
                                 {d.redirectionStarted && (
                                     <div className="detail-timeline-item">
                                         <span className="dt-icon">▶</span>
