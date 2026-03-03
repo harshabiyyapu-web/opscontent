@@ -1619,13 +1619,13 @@ a:hover {
 
 .date-dropdown {
   position: absolute;
-  top: 100%;
+  bottom: 100%;
   right: 0;
-  margin-top: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
   background: #ffffff;
   border: 1px solid #ddd;
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.15);
   min-width: 200px;
   z-index: 9999;
 }
