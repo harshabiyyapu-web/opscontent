@@ -42,6 +42,7 @@ function DomainView({ activeTab, setActiveTab }) {
     const [articleSearchQuery, setArticleSearchQuery] = useState('')
     const [articleDetailOpen, setArticleDetailOpen] = useState(null)
     const [selectedForIndex, setSelectedForIndex] = useState(new Set())
+    const [redirFilter, setRedirFilter] = useState('all') // 'all' or redirection set id
 
     // Fetch session
     const fetchSession = useCallback(async () => {
@@ -69,10 +70,11 @@ function DomainView({ activeTab, setActiveTab }) {
     }, [id])
 
     // Fetch analytics (Plausible realtime)
-    const fetchAnalytics = useCallback(async () => {
+    const fetchAnalytics = useCallback(async (forceRefresh = false) => {
         setAnalyticsLoading(true)
         try {
-            const response = await fetch(`/api/domains/${id}/analytics-groups?date=${selectedDate}&realtime=true`)
+            const forceParam = forceRefresh ? '&force=true' : ''
+            const response = await fetch(`/api/domains/${id}/analytics-groups?date=${selectedDate}&realtime=true${forceParam}`)
             if (response.ok) {
                 const data = await response.json()
                 setAnalyticsData(data)
@@ -93,17 +95,34 @@ function DomainView({ activeTab, setActiveTab }) {
                 body: JSON.stringify({ visitors, pageviews, date: selectedDate })
             })
             if (response.ok) {
-                // Refresh analytics to get updated snapshots
                 fetchAnalytics()
             }
         } catch (error) { console.error('Failed to save snapshot:', error) }
+    }
+
+    // Save traffic snapshot for a source URL
+    const handleSaveSourceSnapshot = async (redirId, sourceId, visitors, pageviews) => {
+        try {
+            const response = await fetch(`/api/domains/${id}/session/redirections/${redirId}/source/${sourceId}/snapshot`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ visitors, pageviews, date: selectedDate })
+            })
+            if (response.ok) {
+                fetchAnalytics()
+            }
+        } catch (error) { console.error('Failed to save source snapshot:', error) }
     }
 
     // Analytics push handler
     const handleAnalyticsPush = async (pushData) => {
         if (!analyticsPushTarget) return
         try {
-            const res = await fetch(`/api/domains/${id}/session/push/article/${analyticsPushTarget.articleId}`, {
+            // Check if this is a source URL push or article push
+            const url = analyticsPushTarget.isSourceUrl
+                ? `/api/domains/${id}/session/redirections/${analyticsPushTarget.redirectionId}/push/source/${analyticsPushTarget.articleId}`
+                : `/api/domains/${id}/session/push/article/${analyticsPushTarget.articleId}`
+            const res = await fetch(url, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...pushData, date: selectedDate })
@@ -412,6 +431,29 @@ function DomainView({ activeTab, setActiveTab }) {
                             </div>
                         </div>
 
+                        {/* Redirection Filter Bar */}
+                        {(() => {
+                            const allRedirs = (analyticsData || []).flatMap(g => g.redirectionSets || [])
+                            const uniqueRedirs = allRedirs.filter((r, i, arr) => arr.findIndex(x => x.id === r.id) === i)
+                            if (uniqueRedirs.length === 0) return null
+                            return (
+                                <div className="redir-filter-bar">
+                                    <span className="redir-filter-label">🔀 View:</span>
+                                    <button
+                                        className={`redir-filter-btn ${redirFilter === 'all' ? 'active' : ''}`}
+                                        onClick={() => setRedirFilter('all')}
+                                    >All</button>
+                                    {uniqueRedirs.map(r => (
+                                        <button
+                                            key={r.id}
+                                            className={`redir-filter-btn ${redirFilter === r.id ? 'active' : ''}`}
+                                            onClick={() => setRedirFilter(redirFilter === r.id ? 'all' : r.id)}
+                                        >{r.name}</button>
+                                    ))}
+                                </div>
+                            )
+                        })()}
+
                         {(session.contentGroups || []).length === 0 ? (
                             <div className="empty-state">
                                 <div className="empty-state-icon">📊</div>
@@ -420,19 +462,35 @@ function DomainView({ activeTab, setActiveTab }) {
                             </div>
                         ) : (
                             (analyticsData || []).map(group => {
-                                const filteredArticles = articleSearchQuery
-                                    ? group.articles.filter(a =>
+                                // Apply redirection filter
+                                const filteredSourceUrls = redirFilter === 'all'
+                                    ? (group.sourceUrlAnalytics || [])
+                                    : (group.sourceUrlAnalytics || []).filter(s => s.redirectionId === redirFilter)
+
+                                const filteredRedirArticleIds = redirFilter === 'all'
+                                    ? null // show all
+                                    : (group.redirectionSets || []).filter(r => r.id === redirFilter).flatMap(r => r.redirectedArticleIds)
+
+                                let filteredArticles = redirFilter === 'all'
+                                    ? group.articles
+                                    : group.articles.filter(a => filteredRedirArticleIds && filteredRedirArticleIds.includes(a.id))
+
+                                // Also apply search query
+                                if (articleSearchQuery) {
+                                    filteredArticles = filteredArticles.filter(a =>
                                         (a.title || a.url || '').toLowerCase().includes(articleSearchQuery.toLowerCase())
                                     )
-                                    : group.articles
-                                if (filteredArticles.length === 0 && articleSearchQuery) return null
+                                }
+
+                                if (filteredArticles.length === 0 && filteredSourceUrls.length === 0 && (articleSearchQuery || redirFilter !== 'all')) return null
                                 return (
                                     <div key={group.groupId} className="analytics-country-section">
                                         <div className="analytics-country-header">
                                             <span className="country-flag-large">{group.countryFlag}</span>
                                             <h3>{group.country}</h3>
                                             <span className="content-group-count">{group.articles.length} articles</span>
-                                            <button className="btn btn-primary btn-sm" onClick={fetchAnalytics} style={{ marginLeft: 'auto' }} disabled={analyticsLoading}>
+                                            {filteredSourceUrls.length > 0 && <span className="content-group-count" style={{ background: 'rgba(245,158,11,0.15)', color: '#d97706' }}>{filteredSourceUrls.length} sources</span>}
+                                            <button className="btn btn-primary btn-sm" onClick={() => fetchAnalytics(true)} style={{ marginLeft: 'auto' }} disabled={analyticsLoading}>
                                                 {analyticsLoading ? '⏳' : '🔄'} Refresh
                                             </button>
                                         </div>
@@ -450,6 +508,208 @@ function DomainView({ activeTab, setActiveTab }) {
                                             </div>
                                         )}
 
+                                        {/* Source URL Analytics Cards FIRST — orange background, already indexed */}
+                                        {filteredSourceUrls.length > 0 && (
+                                            <>
+                                                <div className="source-url-section-label">
+                                                    🔗 Traffic Source URLs ({filteredSourceUrls.length})
+                                                </div>
+                                                <div className="analytics-articles-list">
+                                                    {filteredSourceUrls.map(srcUrl => {
+                                                        const sa = srcUrl.analytics || {}
+                                                        const srt = sa.realtime || {}
+                                                        const sTotals = sa.totals || {}
+                                                        const sHourlyData = sa.hourlyData || []
+                                                        const sMaxVal = Math.max(...sHourlyData.map(d => d.visitors || 0), 1)
+                                                        const sSources = sa.sources || []
+                                                        const srcSnapshots = srcUrl.trafficSnapshots || []
+
+                                                        return (
+                                                            <div key={srcUrl.id} className="analytics-article-card source-url-card">
+                                                                {/* Source URL Header */}
+                                                                <div className="analytics-article-header">
+                                                                    <div className="analytics-article-img-wrap">
+                                                                        <div className="analytics-article-img-placeholder">🔗</div>
+                                                                    </div>
+                                                                    <div className="analytics-article-info-col">
+                                                                        <h4 className="analytics-article-title">
+                                                                            {srcUrl.title || srcUrl.url}
+                                                                            <span className="source-url-badge">🔗 Traffic Source URL</span>
+                                                                            <span className="source-url-indexed-badge">✅ Already Indexed</span>
+                                                                        </h4>
+                                                                        <div className="article-url-row">
+                                                                            <a href={srcUrl.url} target="_blank" rel="noopener noreferrer" className="analytics-article-link">
+                                                                                {(() => { try { return new URL(srcUrl.url).hostname + new URL(srcUrl.url).pathname.slice(0, 30) } catch { return srcUrl.url.slice(0, 50) } })()}
+                                                                            </a>
+                                                                        </div>
+                                                                        {srcUrl.redirectionName && (
+                                                                            <div style={{ fontSize: '11px', color: '#d97706', marginTop: '2px' }}>
+                                                                                ↳ from: {srcUrl.redirectionName}
+                                                                            </div>
+                                                                        )}
+                                                                        <div className="analytics-push-row">
+                                                                            {srcUrl.pushStatus?.given ? (
+                                                                                <span
+                                                                                    className="push-badge push-given-badge push-badge-clickable"
+                                                                                    onClick={() => setPushDetailOpen(pushDetailOpen === srcUrl.id ? null : srcUrl.id)}
+                                                                                >
+                                                                                    🔔 Push Given ▾
+                                                                                </span>
+                                                                            ) : (
+                                                                                <button className="btn btn-push-sm" onClick={() => {
+                                                                                    setAnalyticsPushTarget({ articleId: srcUrl.id, label: srcUrl.title, isSourceUrl: true, redirectionId: srcUrl.redirectionId })
+                                                                                    setAnalyticsPushModal(true)
+                                                                                }}>
+                                                                                    🔔 Push
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                        {pushDetailOpen === srcUrl.id && srcUrl.pushStatus?.given && (
+                                                                            <div className="push-detail-dropdown">
+                                                                                <div className="push-detail-row"><span className="push-detail-label">Site:</span> <span>{srcUrl.pushStatus.siteName}</span></div>
+                                                                                <div className="push-detail-row"><span className="push-detail-label">Email:</span> <span>{srcUrl.pushStatus.email}</span></div>
+                                                                                <div className="push-detail-row"><span className="push-detail-label">Time:</span> <span>{srcUrl.pushStatus.time}</span></div>
+                                                                                <div className="push-detail-row"><span className="push-detail-label">Given:</span> <span>{new Date(srcUrl.pushStatus.givenAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</span></div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    {/* Realtime Visitors */}
+                                                                    <div className="analytics-realtime-big">
+                                                                        <div className="realtime-live-indicator">
+                                                                            <span className="live-dot-pulse"></span>
+                                                                            <span className="live-text">LIVE</span>
+                                                                        </div>
+                                                                        <div className="realtime-big-number">{srt.visitors || 0}</div>
+                                                                        <div className="realtime-big-label">visitors now</div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Traffic Chart */}
+                                                                {sHourlyData.length > 0 && (
+                                                                    <div className="analytics-mini-chart">
+                                                                        <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="mini-chart-svg">
+                                                                            <defs>
+                                                                                <linearGradient id={`grad-src-${srcUrl.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                                                                    <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25" />
+                                                                                    <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
+                                                                                </linearGradient>
+                                                                            </defs>
+                                                                            <path
+                                                                                d={`M ${sHourlyData.map((d, i) => `${(i / (sHourlyData.length - 1 || 1)) * 100},${40 - ((d.visitors || 0) / sMaxVal) * 35}`).join(' L ')}`}
+                                                                                fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round"
+                                                                            />
+                                                                            <path
+                                                                                d={`M 0,40 ${sHourlyData.map((d, i) => `L ${(i / (sHourlyData.length - 1 || 1)) * 100},${40 - ((d.visitors || 0) / sMaxVal) * 35}`).join(' ')} L 100,40 Z`}
+                                                                                fill={`url(#grad-src-${srcUrl.id})`}
+                                                                            />
+                                                                        </svg>
+                                                                        <div className="mini-chart-labels">
+                                                                            <span>24h ago</span>
+                                                                            <span>Now</span>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Today's Totals */}
+                                                                <div className="analytics-totals-row">
+                                                                    <div className="analytics-metric">
+                                                                        <span className="analytics-metric-val">{sTotals.visitors || 0}</span>
+                                                                        <span className="analytics-metric-lbl">Today</span>
+                                                                    </div>
+                                                                    <div className="analytics-metric">
+                                                                        <span className="analytics-metric-val">{sTotals.pageviews || 0}</span>
+                                                                        <span className="analytics-metric-lbl">Views</span>
+                                                                    </div>
+                                                                    <div className="analytics-metric">
+                                                                        <span className="analytics-metric-val">{sTotals.bounce_rate ? `${Math.round(sTotals.bounce_rate)}%` : '0%'}</span>
+                                                                        <span className="analytics-metric-lbl">Bounce</span>
+                                                                    </div>
+                                                                    <div className="analytics-metric">
+                                                                        <span className="analytics-metric-val">{sTotals.visit_duration ? `${Math.floor(sTotals.visit_duration / 60)}m` : '0s'}</span>
+                                                                        <span className="analytics-metric-lbl">Avg Time</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Realtime Traffic Sources */}
+                                                                {sSources.length > 0 && (
+                                                                    <div className="analytics-sources-section">
+                                                                        <div className="analytics-sources-label">📡 Live Sources <span className="sources-live-tag">last 5 min</span></div>
+                                                                        <div className="analytics-sources-list">
+                                                                            {sSources.slice(0, 6).map((src, idx) => {
+                                                                                const maxSrcVisitors = sSources[0]?.visitors || 1
+                                                                                const barPercent = Math.max(5, (src.visitors / maxSrcVisitors) * 100)
+                                                                                const sourceColors = ['#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#ec4899']
+                                                                                return (
+                                                                                    <div key={idx} className="source-bar-row">
+                                                                                        <span className="source-bar-name">{src.source}</span>
+                                                                                        <div className="source-bar-track">
+                                                                                            <div
+                                                                                                className="source-bar-fill"
+                                                                                                style={{ width: `${barPercent}%`, backgroundColor: sourceColors[idx % sourceColors.length] }}
+                                                                                            ></div>
+                                                                                        </div>
+                                                                                        <span className="source-bar-count">{src.visitors}</span>
+                                                                                    </div>
+                                                                                )
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Action Buttons — Snapshot + Push */}
+                                                                <div className="analytics-action-row">
+                                                                    <button
+                                                                        className="btn btn-snapshot-compact"
+                                                                        onClick={() => handleSaveSourceSnapshot(srcUrl.redirectionId, srcUrl.id, srt.visitors || 0, sTotals.pageviews || 0)}
+                                                                    >
+                                                                        📸 Snapshot
+                                                                    </button>
+                                                                    {!srcUrl.pushStatus?.given && (
+                                                                        <button className="btn btn-push-compact" onClick={() => {
+                                                                            setAnalyticsPushTarget({ articleId: srcUrl.id, label: srcUrl.title, isSourceUrl: true, redirectionId: srcUrl.redirectionId })
+                                                                            setAnalyticsPushModal(true)
+                                                                        }}>
+                                                                            🔔 Push
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Saved Snapshots */}
+                                                                {srcSnapshots.length > 0 && (
+                                                                    <div className="snapshot-list-improved">
+                                                                        <div className="snapshot-list-label">📸 Snapshots ({selectedDate})</div>
+                                                                        {srcSnapshots.map(snap => (
+                                                                            <div key={snap.id} className="snapshot-card">
+                                                                                <div className="snapshot-card-time">🕐 {snap.timestamp}</div>
+                                                                                <div className="snapshot-card-date">{selectedDate}</div>
+                                                                                <div className="snapshot-card-stats">
+                                                                                    <div className="snapshot-stat">
+                                                                                        <span className="snapshot-stat-val">{snap.visitors}</span>
+                                                                                        <span className="snapshot-stat-lbl">Live</span>
+                                                                                    </div>
+                                                                                    <div className="snapshot-stat">
+                                                                                        <span className="snapshot-stat-val">{snap.pageviews}</span>
+                                                                                        <span className="snapshot-stat-lbl">Views</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                {sa.lastUpdated && (
+                                                                    <div className="analytics-updated">
+                                                                        Updated: {new Date(sa.lastUpdated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {/* Article Cards */}
                                         <div className="analytics-articles-list">
                                             {filteredArticles.map(article => {
                                                 const a = article.analytics || {}
@@ -492,11 +752,9 @@ function DomainView({ activeTab, setActiveTab }) {
                                                                     <button className="btn-google-check" onClick={() => handleGoogleCheck(article.url)} title="Check if indexed on Google">
                                                                         🔍
                                                                     </button>
-                                                                    {!article.indexed && (
-                                                                        <button className="btn-mark-indexed" onClick={() => handleMarkIndexed([article.id])} title="Mark as indexed">
-                                                                            ✅
-                                                                        </button>
-                                                                    )}
+                                                                    <button className="btn-mark-indexed" onClick={() => handleMarkIndexed([article.id])} title={article.indexed ? 'Un-mark indexed' : 'Mark as indexed'}>
+                                                                        {article.indexed ? '✅' : '○'}
+                                                                    </button>
                                                                 </div>
                                                                 <div className="analytics-push-row">
                                                                     {article.pushStatus?.given ? (
@@ -659,140 +917,6 @@ function DomainView({ activeTab, setActiveTab }) {
                                                 )
                                             })}
                                         </div>
-
-                                        {/* Source URL Analytics Cards — orange background, already indexed */}
-                                        {(group.sourceUrlAnalytics || []).length > 0 && (
-                                            <>
-                                                <div className="source-url-section-label">
-                                                    🔗 Traffic Source URLs ({group.sourceUrlAnalytics.length})
-                                                </div>
-                                                <div className="analytics-articles-list">
-                                                    {group.sourceUrlAnalytics.map(srcUrl => {
-                                                        const sa = srcUrl.analytics || {}
-                                                        const srt = sa.realtime || {}
-                                                        const sTotals = sa.totals || {}
-                                                        const sHourlyData = sa.hourlyData || []
-                                                        const sMaxVal = Math.max(...sHourlyData.map(d => d.visitors || 0), 1)
-                                                        const sSources = sa.sources || []
-
-                                                        return (
-                                                            <div key={srcUrl.id} className="analytics-article-card source-url-card">
-                                                                {/* Source URL Header */}
-                                                                <div className="analytics-article-header">
-                                                                    <div className="analytics-article-img-wrap">
-                                                                        <div className="analytics-article-img-placeholder">🔗</div>
-                                                                    </div>
-                                                                    <div className="analytics-article-info-col">
-                                                                        <h4 className="analytics-article-title">
-                                                                            {srcUrl.title || srcUrl.url}
-                                                                            <span className="source-url-badge">🔗 Traffic Source URL</span>
-                                                                            <span className="source-url-indexed-badge">✅ Already Indexed</span>
-                                                                        </h4>
-                                                                        <div className="article-url-row">
-                                                                            <a href={srcUrl.url} target="_blank" rel="noopener noreferrer" className="analytics-article-link">
-                                                                                {(() => { try { return new URL(srcUrl.url).hostname + new URL(srcUrl.url).pathname.slice(0, 30) } catch { return srcUrl.url.slice(0, 50) } })()}
-                                                                            </a>
-                                                                        </div>
-                                                                        {srcUrl.redirectionName && (
-                                                                            <div style={{ fontSize: '11px', color: '#d97706', marginTop: '2px' }}>
-                                                                                ↳ from: {srcUrl.redirectionName}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                    {/* Realtime Visitors */}
-                                                                    <div className="analytics-realtime-big">
-                                                                        <div className="realtime-live-indicator">
-                                                                            <span className="live-dot-pulse"></span>
-                                                                            <span className="live-text">LIVE</span>
-                                                                        </div>
-                                                                        <div className="realtime-big-number">{srt.visitors || 0}</div>
-                                                                        <div className="realtime-big-label">visitors now</div>
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* Traffic Chart */}
-                                                                {sHourlyData.length > 0 && (
-                                                                    <div className="analytics-mini-chart">
-                                                                        <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="mini-chart-svg">
-                                                                            <defs>
-                                                                                <linearGradient id={`grad-src-${srcUrl.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                                                                                    <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25" />
-                                                                                    <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
-                                                                                </linearGradient>
-                                                                            </defs>
-                                                                            <path
-                                                                                d={`M ${sHourlyData.map((d, i) => `${(i / (sHourlyData.length - 1 || 1)) * 100},${40 - ((d.visitors || 0) / sMaxVal) * 35}`).join(' L ')}`}
-                                                                                fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round"
-                                                                            />
-                                                                            <path
-                                                                                d={`M 0,40 ${sHourlyData.map((d, i) => `L ${(i / (sHourlyData.length - 1 || 1)) * 100},${40 - ((d.visitors || 0) / sMaxVal) * 35}`).join(' ')} L 100,40 Z`}
-                                                                                fill={`url(#grad-src-${srcUrl.id})`}
-                                                                            />
-                                                                        </svg>
-                                                                        <div className="mini-chart-labels">
-                                                                            <span>24h ago</span>
-                                                                            <span>Now</span>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Today's Totals */}
-                                                                <div className="analytics-totals-row">
-                                                                    <div className="analytics-metric">
-                                                                        <span className="analytics-metric-val">{sTotals.visitors || 0}</span>
-                                                                        <span className="analytics-metric-lbl">Today</span>
-                                                                    </div>
-                                                                    <div className="analytics-metric">
-                                                                        <span className="analytics-metric-val">{sTotals.pageviews || 0}</span>
-                                                                        <span className="analytics-metric-lbl">Views</span>
-                                                                    </div>
-                                                                    <div className="analytics-metric">
-                                                                        <span className="analytics-metric-val">{sTotals.bounce_rate ? `${Math.round(sTotals.bounce_rate)}%` : '0%'}</span>
-                                                                        <span className="analytics-metric-lbl">Bounce</span>
-                                                                    </div>
-                                                                    <div className="analytics-metric">
-                                                                        <span className="analytics-metric-val">{sTotals.visit_duration ? `${Math.floor(sTotals.visit_duration / 60)}m` : '0s'}</span>
-                                                                        <span className="analytics-metric-lbl">Avg Time</span>
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* Realtime Traffic Sources */}
-                                                                {sSources.length > 0 && (
-                                                                    <div className="analytics-sources-section">
-                                                                        <div className="analytics-sources-label">📡 Live Sources <span className="sources-live-tag">last 5 min</span></div>
-                                                                        <div className="analytics-sources-list">
-                                                                            {sSources.slice(0, 6).map((src, idx) => {
-                                                                                const maxSrcVisitors = sSources[0]?.visitors || 1
-                                                                                const barPercent = Math.max(5, (src.visitors / maxSrcVisitors) * 100)
-                                                                                const sourceColors = ['#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#ec4899']
-                                                                                return (
-                                                                                    <div key={idx} className="source-bar-row">
-                                                                                        <span className="source-bar-name">{src.source}</span>
-                                                                                        <div className="source-bar-track">
-                                                                                            <div
-                                                                                                className="source-bar-fill"
-                                                                                                style={{ width: `${barPercent}%`, backgroundColor: sourceColors[idx % sourceColors.length] }}
-                                                                                            ></div>
-                                                                                        </div>
-                                                                                        <span className="source-bar-count">{src.visitors}</span>
-                                                                                    </div>
-                                                                                )
-                                                                            })}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
-                                                                {sa.lastUpdated && (
-                                                                    <div className="analytics-updated">
-                                                                        Updated: {new Date(sa.lastUpdated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )
-                                                    })}
-                                                </div>
-                                            </>
-                                        )}
 
                                         {/* Redirection Summary below articles */}
                                         {(group.redirectionSets || []).length > 0 && (

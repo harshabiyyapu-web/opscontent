@@ -977,17 +977,27 @@ app.patch('/api/domains/:id/session/mark-indexed', (req, res) => {
     const session = getOrCreateSession(domainId, date || getTodayDateString());
 
     const marked = [];
+    const unmarked = [];
     for (const group of session.contentGroups) {
         for (const article of group.articles) {
             if (articleIds.includes(article.id)) {
-                article.indexed = true;
-                article.indexedAt = new Date().toISOString();
-                marked.push(article.id);
+                // Toggle: if already indexed, un-index; otherwise mark indexed
+                if (article.indexed) {
+                    article.indexed = false;
+                    article.indexedAt = null;
+                    article.indexStatus = 'unchecked';
+                    unmarked.push(article.id);
+                } else {
+                    article.indexed = true;
+                    article.indexedAt = new Date().toISOString();
+                    article.indexStatus = 'indexed';
+                    marked.push(article.id);
+                }
             }
         }
     }
 
-    res.json({ marked, count: marked.length });
+    res.json({ marked, unmarked, count: marked.length + unmarked.length });
 });
 
 // Report endpoint — aggregated data for date range
@@ -1105,7 +1115,7 @@ app.get('/api/domains/:id/sessions', (req, res) => {
 // Get tracking/analytics data grouped by country (with Plausible realtime)
 app.get('/api/domains/:id/analytics-groups', async (req, res) => {
     const domainId = req.params.id;
-    const { date, realtime } = req.query;
+    const { date, realtime, force } = req.query;
     const apiKey = store.settings.plausibleApiKey;
     const session = getOrCreateSession(domainId, date || getTodayDateString());
 
@@ -1113,6 +1123,14 @@ app.get('/api/domains/:id/analytics-groups', async (req, res) => {
     if (!domain) return res.status(404).json({ error: 'Domain not found' });
 
     const siteId = getSiteIdFromUrl(domain.url);
+
+    // If force refresh requested, clear analytics cache for all items in this session
+    if (force === 'true') {
+        const allArticles = session.contentGroups.flatMap(g => g.articles);
+        const allSourceUrls = (session.redirectionSets || []).flatMap(r => (r.sourceUrls || []));
+        [...allArticles, ...allSourceUrls].forEach(item => delete store.analyticsCache[item.id]);
+        console.log(`🔄 Force refresh: cleared cache for ${allArticles.length + allSourceUrls.length} items`);
+    }
 
     // Fetch Plausible realtime data for each article — PARALLEL for speed
     const analyticsMap = {};
@@ -1184,7 +1202,8 @@ app.get('/api/domains/:id/analytics-groups', async (req, res) => {
                 indexedAt: null,
                 redirectionName: redir.name,
                 redirectionId: redir.id,
-                analytics: analyticsMap[s.id] || null
+                analytics: analyticsMap[s.id] || null,
+                trafficSnapshots: s.trafficSnapshots || []
             }))
         );
 
@@ -1334,6 +1353,32 @@ app.post('/api/domains/:id/session/groups/:gid/articles/:aid/snapshot', (req, re
     };
 
     article.trafficSnapshots.push(snapshot);
+    res.status(201).json(snapshot);
+});
+
+// Save traffic snapshot for a source URL in a redirection set
+app.post('/api/domains/:id/session/redirections/:rid/source/:sid/snapshot', (req, res) => {
+    const { id: domainId, rid, sid } = req.params;
+    const { visitors, pageviews, date } = req.body;
+    const session = getOrCreateSession(domainId, date || getTodayDateString());
+
+    const redir = session.redirectionSets.find(r => r.id === rid);
+    if (!redir) return res.status(404).json({ error: 'Redirection not found' });
+
+    const source = redir.sourceUrls.find(s => s.id === sid);
+    if (!source) return res.status(404).json({ error: 'Source URL not found' });
+
+    if (!source.trafficSnapshots) source.trafficSnapshots = [];
+
+    const snapshot = {
+        id: uuidv4(),
+        visitors: visitors || 0,
+        pageviews: pageviews || 0,
+        timestamp: getISTTime(),
+        isoTimestamp: new Date().toISOString()
+    };
+
+    source.trafficSnapshots.push(snapshot);
     res.status(201).json(snapshot);
 });
 
