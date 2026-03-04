@@ -182,6 +182,46 @@ function DomainView({ activeTab, setActiveTab }) {
         }
     }
 
+    // Bulk snapshot all URLs (articles + source URLs)
+    const [bulkSnapshotting, setBulkSnapshotting] = useState(false)
+    const handleBulkSnapshot = async () => {
+        setBulkSnapshotting(true)
+        try {
+            const promises = []
+            for (const group of (analyticsData || [])) {
+                // Snapshot all articles
+                for (const article of group.articles) {
+                    const a = article.analytics || {}
+                    const rt = a.realtime || {}
+                    const totals = a.totals || {}
+                    promises.push(
+                        fetch(`/api/domains/${id}/session/groups/${group.groupId}/articles/${article.id}/snapshot`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ visitors: rt.visitors || 0, pageviews: totals.pageviews || 0, date: selectedDate })
+                        })
+                    )
+                }
+                // Snapshot all source URLs
+                for (const srcUrl of (group.sourceUrlAnalytics || [])) {
+                    const sa = srcUrl.analytics || {}
+                    const srt = sa.realtime || {}
+                    const sTotals = sa.totals || {}
+                    promises.push(
+                        fetch(`/api/domains/${id}/session/redirections/${srcUrl.redirectionId}/source/${srcUrl.id}/snapshot`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ visitors: srt.visitors || 0, pageviews: sTotals.pageviews || 0, date: selectedDate })
+                        })
+                    )
+                }
+            }
+            await Promise.allSettled(promises)
+            fetchAnalytics()
+        } catch (e) { console.error('Bulk snapshot failed:', e) }
+        finally { setBulkSnapshotting(false) }
+    }
+
     useEffect(() => { fetchDomain() }, [fetchDomain])
     useEffect(() => { fetchSession() }, [fetchSession])
 
@@ -495,18 +535,23 @@ function DomainView({ activeTab, setActiveTab }) {
                                             </button>
                                         </div>
 
-                                        {/* Bulk Actions Bar */}
-                                        {selectedForIndex.size > 0 && (
-                                            <div className="bulk-actions-bar">
-                                                <label className="bulk-select-all">
-                                                    <input type="checkbox" onChange={selectAllForIndex} checked={selectedForIndex.size === (analyticsData || []).flatMap(g => g.articles).length} />
-                                                    Select All
-                                                </label>
-                                                <span className="bulk-count">{selectedForIndex.size} selected</span>
-                                                <button className="btn btn-bulk-google" onClick={handleBulkGoogleCheck}>🔍 Bulk Google Check</button>
-                                                <button className="btn btn-bulk-indexed" onClick={() => handleMarkIndexed([...selectedForIndex])}>✅ Bulk Mark Indexed</button>
-                                            </div>
-                                        )}
+                                        {/* Bulk Actions Bar — always visible */}
+                                        <div className="bulk-actions-bar">
+                                            <label className="bulk-select-all">
+                                                <input type="checkbox" onChange={selectAllForIndex} checked={selectedForIndex.size > 0 && selectedForIndex.size === (analyticsData || []).flatMap(g => g.articles).length} />
+                                                Select All
+                                            </label>
+                                            <button className="btn btn-bulk-snapshot" onClick={handleBulkSnapshot} disabled={bulkSnapshotting}>
+                                                {bulkSnapshotting ? '⏳ Snapshotting...' : '📸 Bulk Snapshot All'}
+                                            </button>
+                                            {selectedForIndex.size > 0 && (
+                                                <>
+                                                    <span className="bulk-count">{selectedForIndex.size} selected</span>
+                                                    <button className="btn btn-bulk-google" onClick={handleBulkGoogleCheck}>🔍 Bulk Google Check</button>
+                                                    <button className="btn btn-bulk-indexed" onClick={() => handleMarkIndexed([...selectedForIndex])}>✅ Bulk Mark Indexed</button>
+                                                </>
+                                            )}
+                                        </div>
 
                                         {/* Source URL Analytics Cards FIRST — orange background, already indexed */}
                                         {filteredSourceUrls.length > 0 && (
