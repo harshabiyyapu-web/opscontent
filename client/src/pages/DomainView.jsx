@@ -574,10 +574,13 @@ function DomainView({ activeTab, setActiveTab }) {
                                                                 {/* Source URL Header */}
                                                                 <div className="analytics-article-header">
                                                                     <div className="analytics-article-img-wrap">
-                                                                        <div className="analytics-article-img-placeholder">🔗</div>
+                                                                        {srcUrl.image ? (
+                                                                            <img src={srcUrl.image} alt="" className="analytics-article-img" onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex') }} />
+                                                                        ) : null}
+                                                                        <div className="analytics-article-img-placeholder" style={srcUrl.image ? { display: 'none' } : {}}>🔗</div>
                                                                     </div>
                                                                     <div className="analytics-article-info-col">
-                                                                        <h4 className="analytics-article-title">
+                                                                        <h4 className="analytics-article-title analytics-article-clickable" onClick={() => setArticleDetailOpen(srcUrl)}>
                                                                             {srcUrl.title || srcUrl.url}
                                                                             <span className="source-url-badge">🔗 Traffic Source URL</span>
                                                                             <span className="source-url-indexed-badge">✅ Already Indexed</span>
